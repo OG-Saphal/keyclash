@@ -13,26 +13,34 @@ import Results from './components/Results';
 import Footer from './components/Footer';
 
 /**
- * App – root component that wires everything together.
- *
- * Layout:
- *   Header
- *   ─────────────────────────────────────
- *   Settings bar
- *   Timer  |  Live metrics
- *   Word display area
- *   Restart hint
- *   ─────────────────────────────────────
- *   Footer
+ * WordProgress – shows "12 / 25" in words mode instead of a countdown timer.
+ * Styled to match Timer.tsx so swapping between them looks seamless.
  */
+const WordProgress: React.FC = () => {
+  const currentWordIndex = useTypingStore(s => s.currentWordIndex);
+  const wordCount        = useTypingStore(s => s.wordCount);
+  const phase            = useTypingStore(s => s.phase);
+
+  const colorClass =
+    phase === 'idle'
+      ? 'text-text-muted'
+      : 'text-text-primary';
+
+  return (
+    <div className={`text-4xl font-mono font-bold tracking-tight ${colorClass}`}>
+      {currentWordIndex}
+      <span className="text-text-muted text-2xl"> / {wordCount}</span>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const initTest = useTypingStore(s => s.initTest);
-  const phase = useTypingStore(s => s.phase);
+  const phase    = useTypingStore(s => s.phase);
+  const mode     = useTypingStore(s => s.mode);
 
-  // Start the timer hook (watches phase)
   useTimer();
 
-  // Initialise word list on mount
   useEffect(() => {
     initTest();
   }, [initTest]);
@@ -41,7 +49,6 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header />
 
-      {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-3xl">
           <AnimatePresence mode="wait">
@@ -53,19 +60,38 @@ const App: React.FC = () => {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                {/* Settings */}
                 <Settings />
 
-                {/* Timer + live stats */}
                 <div className="flex flex-col items-center mb-2">
-                  <Timer />
+                  {/* Show countdown in time mode, word progress in words mode */}
+                  <AnimatePresence mode="wait">
+                    {mode === 'time' ? (
+                      <motion.div
+                        key="timer"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <Timer />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="word-progress"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <WordProgress />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   <LiveStats />
                 </div>
 
-                {/* Word display + hidden input */}
                 <WordDisplay />
-
-                {/* Restart hint */}
                 <RestartButton />
               </motion.div>
             ) : (

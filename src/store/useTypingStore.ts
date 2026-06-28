@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type {
+  TestMode,
   TestDuration,
+  WordCount,
   WordSet,
   WordData,
   LiveMetrics,
@@ -17,39 +19,43 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** How many words to generate for a test */
-const WORD_COUNT = 80;
+/** Word count for time mode (always generate a big buffer) */
+const TIME_MODE_WORD_COUNT = 80;
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────
 
 interface TypingState {
   // ── Config ──────────────────────────────────────────────────────────────────
+  mode: TestMode;
   duration: TestDuration;
+  wordCount: WordCount;
   wordSet: WordSet;
 
   // ── Test State ───────────────────────────────────────────────────────────────
   phase: TestPhase;
   words: WordData[];
   currentWordIndex: number;
-  currentInput: string;       // what the user has typed for the current word
+  currentInput: string;
 
-  // ── Timer ────────────────────────────────────────────────────────────────────
-  timeLeft: number;           // seconds remaining
-  startTime: number | null;   // epoch ms when test started
+  // ── Timer (time mode only) ───────────────────────────────────────────────────
+  timeLeft: number;
+  startTime: number | null;
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
   metrics: LiveMetrics;
-  totalKeystrokes: number;    // raw keystroke count for rawWpm
+  totalKeystrokes: number;
   result: TestResult | null;
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+  setMode: (m: TestMode) => void;
   setDuration: (d: TestDuration) => void;
+  setWordCount: (wc: WordCount) => void;
   setWordSet: (ws: WordSet) => void;
   initTest: () => void;
   startTest: () => void;
   handleInput: (value: string) => void;
   handleKeyDown: (e: KeyboardEvent) => void;
-  tick: () => void;           // called every second by the timer interval
+  tick: () => void;
   finishTest: () => void;
   restart: () => void;
 }
@@ -58,7 +64,9 @@ interface TypingState {
 
 export const useTypingStore = create<TypingState>((set, get) => ({
   // ── Config Defaults ──────────────────────────────────────────────────────────
+  mode: 'time',
   duration: 30,
+  wordCount: 25,
   wordSet: 'english200',
 
   // ── Initial State ────────────────────────────────────────────────────────────
@@ -74,12 +82,21 @@ export const useTypingStore = create<TypingState>((set, get) => ({
 
   // ── Config Actions ───────────────────────────────────────────────────────────
 
+  setMode: (mode) => {
+    set({ mode });
+    get().initTest();
+  },
+
   setDuration: (duration) => {
     set({ duration, timeLeft: duration });
-    // If idle, reset immediately so the timer display updates
     if (get().phase === 'idle') {
       get().initTest();
     }
+  },
+
+  setWordCount: (wordCount) => {
+    set({ wordCount });
+    get().initTest();
   },
 
   setWordSet: (wordSet) => {
@@ -90,8 +107,12 @@ export const useTypingStore = create<TypingState>((set, get) => ({
   // ── Initialise a new test (but don't start the clock) ────────────────────────
 
   initTest: () => {
-    const { duration, wordSet } = get();
-    const words = generateWords(wordSet, WORD_COUNT);
+    const { mode, duration, wordCount, wordSet } = get();
+
+    // In time mode generate a big buffer; in words mode generate exactly wordCount
+    const count = mode === 'words' ? wordCount : TIME_MODE_WORD_COUNT;
+    const words = generateWords(wordSet, count);
+
     set({
       phase: 'idle',
       words,
@@ -114,43 +135,43 @@ export const useTypingStore = create<TypingState>((set, get) => ({
   // ── Handle character input ───────────────────────────────────────────────────
 
   handleInput: (value: string) => {
-    const { phase, words, currentWordIndex, startTime, totalKeystrokes } = get();
+    const { phase, mode, words, currentWordIndex, startTime, totalKeystrokes } = get();
 
-    // Don't accept input if test is over
     if (phase === 'finished') return;
 
-    // Start the clock on first input
     if (phase === 'idle') {
       get().startTest();
     }
 
-    const trimmedValue = value;
-
     // Space pressed → advance to next word
     if (value.endsWith(' ')) {
-      // Prevent advancing on empty input
-      if (trimmedValue.trim() === '') return;
+      if (value.trim() === '') return;
 
       const updatedWords = [...words];
-      const typedWord = trimmedValue.trim();
+      const typedWord = value.trim();
 
-      // Finalise the current word with the typed value (without trailing space)
       updatedWords[currentWordIndex] = finalizeWord(
         computeWordChars(updatedWords[currentWordIndex], typedWord)
       );
 
       const nextIndex = currentWordIndex + 1;
 
-      // If we've exhausted our word list, finish
-      if (nextIndex >= updatedWords.length) {
+      // In words mode: finish when all words are completed
+      if (mode === 'words' && nextIndex >= updatedWords.length) {
         set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
         get().finishTest();
         return;
       }
 
-      // Compute elapsed for metrics
+      // In time mode: finish if we somehow exhaust the buffer (shouldn't happen)
+      if (mode === 'time' && nextIndex >= updatedWords.length) {
+        set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
+        get().finishTest();
+        return;
+      }
+
       const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-      const ks = totalKeystrokes + 1; // count the space
+      const ks = totalKeystrokes + 1;
       const metrics = computeMetrics(updatedWords, nextIndex, elapsed, ks);
 
       set({
@@ -163,13 +184,29 @@ export const useTypingStore = create<TypingState>((set, get) => ({
       return;
     }
 
-    // Normal character typing – update current word chars live
+    // Normal character typing
     const updatedWords = [...words];
     updatedWords[currentWordIndex] = computeWordChars(updatedWords[currentWordIndex], value);
 
     const ks = totalKeystrokes + 1;
     const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
     const metrics = computeMetrics(updatedWords, currentWordIndex, elapsed, ks);
+
+    // Words mode: auto-finish when the last word is fully typed (no space needed)
+    const isLastWord = mode === 'words' && currentWordIndex === updatedWords.length - 1;
+    const expectedLen = updatedWords[currentWordIndex].chars.length;
+    if (isLastWord && value.length >= expectedLen) {
+      updatedWords[currentWordIndex] = finalizeWord(updatedWords[currentWordIndex]);
+      set({
+        words: updatedWords,
+        currentInput: value,
+        currentWordIndex: currentWordIndex + 1,
+        totalKeystrokes: ks,
+        metrics,
+      });
+      get().finishTest();
+      return;
+    }
 
     set({
       words: updatedWords,
@@ -183,12 +220,10 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     const { phase, currentWordIndex, words, currentInput } = get();
     if (phase === 'finished') return;
 
-    // Backspace on empty input → go back to previous word
     if (e.key === 'Backspace' && currentInput === '' && currentWordIndex > 0) {
       e.preventDefault();
       const prevIndex = currentWordIndex - 1;
       const prevWord = words[prevIndex];
-      // Restore the previous word to typed state (not finalised)
       const restoredWords = [...words];
       restoredWords[prevIndex] = computeWordChars(
         { ...prevWord, isCorrect: null },
@@ -202,15 +237,16 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     }
   },
 
-  // ── Tick: called every second ────────────────────────────────────────────────
+  // ── Tick: called every second (time mode only) ───────────────────────────────
 
   tick: () => {
-    const { phase, timeLeft, words, currentWordIndex, totalKeystrokes, startTime } = get();
+    const { phase, mode, timeLeft, words, currentWordIndex, totalKeystrokes, startTime } = get();
     if (phase !== 'running') return;
 
-    const newTimeLeft = timeLeft - 1;
+    // In words mode the timer doesn't count down — finishing all words ends the test
+    if (mode === 'words') return;
 
-    // Recompute metrics on each tick
+    const newTimeLeft = timeLeft - 1;
     const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
     const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes);
 
@@ -225,7 +261,10 @@ export const useTypingStore = create<TypingState>((set, get) => ({
   // ── Finish and compute results ────────────────────────────────────────────────
 
   finishTest: () => {
-    const { words, currentWordIndex, totalKeystrokes, duration, wordSet, startTime } = get();
+    const {
+      mode, words, currentWordIndex, totalKeystrokes,
+      duration, wordCount, wordSet, startTime,
+    } = get();
 
     const elapsed = startTime ? (Date.now() - startTime) / 1000 : duration;
     const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes);
@@ -233,7 +272,9 @@ export const useTypingStore = create<TypingState>((set, get) => ({
 
     const result: TestResult = {
       ...metrics,
+      mode,
       duration,
+      wordCount,
       wordSet,
       timestamp: Date.now(),
       wordsTyped: words.slice(0, currentWordIndex).filter(w => w.isCorrect === true).length,
@@ -243,7 +284,7 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     set({ phase: 'finished', result, metrics });
   },
 
-  // ── Restart: generate new words and reset ────────────────────────────────────
+  // ── Restart ───────────────────────────────────────────────────────────────────
 
   restart: () => {
     get().initTest();

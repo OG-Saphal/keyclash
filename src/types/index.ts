@@ -1,7 +1,13 @@
 // ─── Test Configuration ───────────────────────────────────────────────────────
 
-/** Available test durations in seconds */
+/** Test mode: countdown timer or fixed word count */
+export type TestMode = 'time' | 'words';
+
+/** Available test durations in seconds (used in time mode) */
 export type TestDuration = 15 | 30 | 60 | 120;
+
+/** Available word counts (used in words mode) */
+export type WordCount = 10 | 25 | 50 | 100;
 
 /** Available word list identifiers */
 export type WordSet = 'english200' | 'english1k' | 'common';
@@ -49,7 +55,9 @@ export type TestPhase = 'idle' | 'running' | 'finished';
 // ─── Results ──────────────────────────────────────────────────────────────────
 
 export interface TestResult extends LiveMetrics {
-  duration: TestDuration;
+  mode: TestMode;
+  duration: TestDuration;   // only meaningful when mode === 'time'
+  wordCount: WordCount;     // only meaningful when mode === 'words'
   wordSet: WordSet;
   timestamp: number;
   wordsTyped: number;
