@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Global resets ───────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: #0f1117;
+  color: #d1d5db;
+  font-family: 'Inter', system-ui, sans-serif;
+  /* Prevent layout shift from scrollbar appearing */
+  overflow-y: scroll;
+}
+
+/* Remove default button styles */
+button {
+  all: unset;
+}
+
+/* Focus visible ring – accessible but doesn't intrude */
+:focus-visible {
+  outline: 2px solid #e2b714;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection colour */
+::selection {
+  background-color: #e2b71433;
+  color: #e2b714;
+}
+
+/* Scrollbar – minimal dark style */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #22263a;
+  border-radius: 2px;
+}
