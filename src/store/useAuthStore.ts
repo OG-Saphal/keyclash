@@ -18,7 +18,7 @@ import {
 } from '../services/profile.service';
 import { exportData } from '../services/results.service';
 import { deleteAccount } from '../services/account.service';
-import type { AuthState, UserProfile } from '../types/auth';
+import type { AuthState } from '../types/auth';
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
