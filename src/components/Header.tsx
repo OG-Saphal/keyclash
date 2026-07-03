@@ -1,26 +1,54 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { useAuthStore } from '../store/useAuthStore';
+import UserMenu from './auth/UserMenu';
+import VerificationBanner from './auth/VerificationBanner';
 
-/**
- * Header – minimal top bar with the KeyClash logo.
- */
 const Header: React.FC = () => {
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const user            = useAuthStore(s => s.user);
+
+  // Never hide buttons behind a loading gate — show auth UI immediately.
+  // If a session exists it will hydrate within ~300ms and swap to UserMenu.
+
   return (
-    <header className="flex items-center justify-between px-8 py-5 select-none">
-      {/* Logo */}
-      <div className="flex items-center gap-2">
-        <span className="text-accent-primary font-mono font-semibold text-xl tracking-tight">
-          key
-        </span>
-        <span className="text-text-primary font-mono font-semibold text-xl tracking-tight">
-          clash
-        </span>
-      </div>
+    <>
+      <header className="flex items-center justify-between px-8 py-4 select-none border-b border-bg-tertiary/40">
 
-      {/* Subtle tagline */}
-      <span className="text-text-muted text-xs font-mono hidden sm:block">
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-0.5" style={{ textDecoration: 'none' }}>
+          <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">keys</span>
+          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">clash</span>
+        </Link>
 
-      </span>
-    </header>
+        {/* Right side */}
+        <div className="flex items-center gap-3">
+
+          {isAuthenticated && user ? (
+            <UserMenu />
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                to="/login"
+                className="font-mono text-sm px-3 py-1.5 rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                style={{ textDecoration: 'none' }}
+              >
+                Login
+              </Link>
+              <Link
+                to="/signup"
+                className="font-mono text-sm px-3 py-1.5 rounded-lg bg-accent-primary text-bg-primary hover:opacity-90 transition-opacity"
+                style={{ textDecoration: 'none' }}
+              >
+                Sign up
+              </Link>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <VerificationBanner />
+    </>
   );
 };
 

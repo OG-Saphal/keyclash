@@ -1,8 +1,23 @@
 import React, { useEffect } from 'react';
+import {
+  HashRouter,
+  Routes,
+  Route,
+} from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTypingStore } from './store/useTypingStore';
+import { useAuthStore } from './store/useAuthStore';
 import { useTimer } from './hooks/useTimer';
 
+// Pages
+import LoginPage from './pages/LoginPage';
+import SignUpPage from './pages/SignUpPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import ProfilePage from './pages/ProfilePage';
+import AccountPage from './pages/AccountPage';
+
+// Components
 import Header from './components/Header';
 import Settings from './components/Settings';
 import Timer from './components/Timer';
@@ -12,29 +27,26 @@ import RestartButton from './components/RestartButton';
 import Results from './components/Results';
 import Footer from './components/Footer';
 
-/**
- * WordProgress – shows "12 / 25" in words mode instead of a countdown timer.
- * Styled to match Timer.tsx so swapping between them looks seamless.
- */
+// ─── WordProgress (unchanged from original) ───────────────────────────────────
+
 const WordProgress: React.FC = () => {
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
   const wordCount        = useTypingStore(s => s.wordCount);
   const phase            = useTypingStore(s => s.phase);
 
-  const colorClass =
-    phase === 'idle'
-      ? 'text-text-muted'
-      : 'text-text-primary';
+  const colorClass = phase === 'idle' ? 'text-text-muted' : 'text-text-primary';
 
   return (
-    <div className={`text-4xl font-mono font-bold tracking-tight ${colorClass}`}>
+    <div className={`text-5xl font-mono font-bold tracking-tight mb-2 ${colorClass}`}>
       {currentWordIndex}
-      <span className="text-text-muted text-2xl"> / {wordCount}</span>
+      <span className="text-text-muted text-2xl ml-1">/ {wordCount}</span>
     </div>
   );
 };
 
-const App: React.FC = () => {
+// ─── Main typing view ─────────────────────────────────────────────────────────
+
+const TypingView: React.FC = () => {
   const initTest = useTypingStore(s => s.initTest);
   const phase    = useTypingStore(s => s.phase);
   const mode     = useTypingStore(s => s.mode);
@@ -63,7 +75,6 @@ const App: React.FC = () => {
                 <Settings />
 
                 <div className="flex flex-col items-center mb-2">
-                  {/* Show countdown in time mode, word progress in words mode */}
                   <AnimatePresence mode="wait">
                     {mode === 'time' ? (
                       <motion.div
@@ -111,6 +122,36 @@ const App: React.FC = () => {
 
       <Footer />
     </div>
+  );
+};
+
+// ─── Root App with router ─────────────────────────────────────────────────────
+
+const App: React.FC = () => {
+  const initializeAuth = useAuthStore(s => s.initializeAuth);
+
+  // Bootstrap auth state once on mount
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  return (
+    <HashRouter>
+      <Routes>
+        {/* Auth routes (full-page, own layout) */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/verify" element={<VerifyEmailPage />} />
+
+        {/* Authenticated routes (also full-page) */}
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/account" element={<AccountPage />} />
+
+        {/* Default: typing app */}
+        <Route path="*" element={<TypingView />} />
+      </Routes>
+    </HashRouter>
   );
 };
 
