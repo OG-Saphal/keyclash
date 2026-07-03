@@ -7,7 +7,6 @@ import AuthLayout from '../components/layout/AuthLayout';
 import { Input, Button, Alert, PasswordStrength, getPasswordStrength } from '../components/ui/FormElements';
 
 const SignUpPage: React.FC = () => {
-  const navigate = useNavigate();
   const signUp = useAuthStore(s => s.signUp);
 
   const [email, setEmail] = useState('');
