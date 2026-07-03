@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Check, X, Loader } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useUsernameChecker } from '../hooks/useUsernameChecker';
