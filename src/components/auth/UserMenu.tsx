@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, BarChart2, Settings, LogOut, ShieldAlert } from 'lucide-react';
+import { User, Settings, LogOut, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import UserAvatar from './UserAvatar';
