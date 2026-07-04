@@ -145,8 +145,9 @@ const WordDisplay: React.FC = () => {
         style={{ height: '8rem' }} // ~3 visible lines
         onClick={() => inputRef.current?.focus()}
       >
-        {/* Fade masks top/bottom */}
-        <div className="pointer-events-none absolute top-0 left-0 right-0 h-6 z-10 bg-gradient-to-b from-bg-primary to-transparent" />
+        {/* Fade mask — bottom only. No top mask: the current line is always
+            scrolled to the top of the box, so fading it just dims the text
+            you're actively typing for no benefit. */}
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 z-10 bg-gradient-to-t from-bg-primary to-transparent" />
 
         <div className="flex flex-wrap gap-y-3 leading-relaxed pr-2">

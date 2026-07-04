@@ -62,4 +62,13 @@ export interface TestResult extends LiveMetrics {
   timestamp: number;
   wordsTyped: number;
   totalChars: number;
+  wpmHistory: WpmDataPoint[];
+}
+
+// metrics datapoints
+
+export interface WpmDataPoint {
+  time: number; // seconds elapsed since test start
+  wpm: number;
+  raw: number;
 }

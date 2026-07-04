@@ -54,9 +54,9 @@ export function computeWordChars(word: WordData, typed: string): WordData {
   // Extra characters typed beyond word length
   const extras: CharData[] = typed.length > word.chars.length
     ? typed.slice(word.chars.length).split('').map((ch): CharData => ({
-        char: ch,
-        state: 'incorrect' as CharState,
-      }))
+      char: ch,
+      state: 'incorrect' as CharState,
+    }))
     : [];
 
   const isCorrect = typed.length === word.chars.length && typed === word.chars.map(c => c.char).join('')
@@ -117,16 +117,20 @@ export function countChars(words: WordData[], currentWordIndex: number): {
 
 /**
  * Compute live typing metrics.
- * @param words           all words in the test
- * @param currentWordIdx  index of the word currently being typed
- * @param elapsedSeconds  time since the test started
- * @param totalKeystrokes total raw keystrokes (including mistakes & backspaces)
+ * @param words              all words in the test
+ * @param currentWordIdx     index of the word currently being typed
+ * @param elapsedSeconds     time since the test started
+ * @param totalKeystrokes    total raw keystrokes (including mistakes & backspaces)
+ * @param cumulativeCorrect  total characters typed correctly, ever (never decreases)
+ * @param cumulativeIncorrect total characters typed incorrectly, ever (never decreases)
  */
 export function computeMetrics(
   words: WordData[],
   currentWordIdx: number,
   elapsedSeconds: number,
   totalKeystrokes: number,
+  cumulativeCorrect: number,
+  cumulativeIncorrect: number,
 ): LiveMetrics {
   if (elapsedSeconds <= 0) {
     return { wpm: 0, rawWpm: 0, accuracy: 0, correctChars: 0, incorrectChars: 0 };
@@ -134,22 +138,19 @@ export function computeMetrics(
 
   const minutesElapsed = elapsedSeconds / 60;
 
-  // Count correctly completed words (not the current one being typed)
+  // WPM stays based on fully-completed correct words (standard definition) —
+  // this already "respects" correctness, since typos in a word disqualify it.
   const completedCorrectWords = words
     .slice(0, currentWordIdx)
     .filter(w => w.isCorrect === true).length;
-
-  // Standard WPM: correct words / minutes (a "word" = 5 chars by the standard definition,
-  // but Monkeytype counts actual correct words instead)
   const wpm = Math.round(completedCorrectWords / minutesElapsed);
 
-  // Raw WPM: total keystrokes / 5 / minutes
   const rawWpm = Math.round(totalKeystrokes / 5 / minutesElapsed);
 
-  const { correct, incorrect, total } = countChars(words, currentWordIdx);
-  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 100;
+  const total = cumulativeCorrect + cumulativeIncorrect;
+  const accuracy = total > 0 ? Math.round((cumulativeCorrect / total) * 100) : 100;
 
-  return { wpm, rawWpm, accuracy, correctChars: correct, incorrectChars: incorrect };
+  return { wpm, rawWpm, accuracy, correctChars: cumulativeCorrect, incorrectChars: cumulativeIncorrect };
 }
 
 // ─── Timer Helpers ────────────────────────────────────────────────────────────

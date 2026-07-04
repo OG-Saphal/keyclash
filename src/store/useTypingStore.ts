@@ -8,45 +8,48 @@ import type {
   LiveMetrics,
   TestPhase,
   TestResult,
+  WpmDataPoint,
 } from '../types';
 import {
   generateWords,
   computeWordChars,
   finalizeWord,
   computeMetrics,
-  countChars,
 } from '../utils/typing';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Word count for time mode (always generate a big buffer) */
 const TIME_MODE_WORD_COUNT = 80;
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────
 
 interface TypingState {
-  // ── Config ──────────────────────────────────────────────────────────────────
   mode: TestMode;
   duration: TestDuration;
   wordCount: WordCount;
   wordSet: WordSet;
 
-  // ── Test State ───────────────────────────────────────────────────────────────
   phase: TestPhase;
   words: WordData[];
   currentWordIndex: number;
   currentInput: string;
 
-  // ── Timer (time mode only) ───────────────────────────────────────────────────
   timeLeft: number;
   startTime: number | null;
 
-  // ── Metrics ──────────────────────────────────────────────────────────────────
   metrics: LiveMetrics;
   totalKeystrokes: number;
+
+  // 🆕 Cumulative, permanent counts — a mistake never gets un-counted just
+  // because you backspaced and fixed it.
+  totalCorrectChars: number;
+  totalIncorrectChars: number;
+
+  // 🆕 One data point recorded per second while running, for the results graph.
+  wpmHistory: WpmDataPoint[];
+
   result: TestResult | null;
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
   setMode: (m: TestMode) => void;
   setDuration: (d: TestDuration) => void;
   setWordCount: (wc: WordCount) => void;
@@ -63,13 +66,11 @@ interface TypingState {
 // ─── Store Implementation ─────────────────────────────────────────────────────
 
 export const useTypingStore = create<TypingState>((set, get) => ({
-  // ── Config Defaults ──────────────────────────────────────────────────────────
   mode: 'time',
   duration: 30,
   wordCount: 25,
   wordSet: 'english200',
 
-  // ── Initial State ────────────────────────────────────────────────────────────
   phase: 'idle',
   words: [],
   currentWordIndex: 0,
@@ -78,6 +79,9 @@ export const useTypingStore = create<TypingState>((set, get) => ({
   startTime: null,
   metrics: { wpm: 0, rawWpm: 0, accuracy: 100, correctChars: 0, incorrectChars: 0 },
   totalKeystrokes: 0,
+  totalCorrectChars: 0,
+  totalIncorrectChars: 0,
+  wpmHistory: [],
   result: null,
 
   // ── Config Actions ───────────────────────────────────────────────────────────
@@ -104,12 +108,10 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     get().initTest();
   },
 
-  // ── Initialise a new test (but don't start the clock) ────────────────────────
+  // ── Initialise a new test ─────────────────────────────────────────────────────
 
   initTest: () => {
     const { mode, duration, wordCount, wordSet } = get();
-
-    // In time mode generate a big buffer; in words mode generate exactly wordCount
     const count = mode === 'words' ? wordCount : TIME_MODE_WORD_COUNT;
     const words = generateWords(wordSet, count);
 
@@ -122,11 +124,12 @@ export const useTypingStore = create<TypingState>((set, get) => ({
       startTime: null,
       metrics: { wpm: 0, rawWpm: 0, accuracy: 100, correctChars: 0, incorrectChars: 0 },
       totalKeystrokes: 0,
+      totalCorrectChars: 0,   // 🆕 reset
+      totalIncorrectChars: 0, // 🆕 reset
+      wpmHistory: [],         // 🆕 reset
       result: null,
     });
   },
-
-  // ── Start the clock (called on first keystroke) ──────────────────────────────
 
   startTest: () => {
     set({ phase: 'running', startTime: Date.now() });
@@ -135,7 +138,10 @@ export const useTypingStore = create<TypingState>((set, get) => ({
   // ── Handle character input ───────────────────────────────────────────────────
 
   handleInput: (value: string) => {
-    const { phase, mode, words, currentWordIndex, startTime, totalKeystrokes } = get();
+    const {
+      phase, mode, words, currentWordIndex, startTime, totalKeystrokes,
+      currentInput, totalCorrectChars, totalIncorrectChars,
+    } = get();
 
     if (phase === 'finished') return;
 
@@ -156,14 +162,12 @@ export const useTypingStore = create<TypingState>((set, get) => ({
 
       const nextIndex = currentWordIndex + 1;
 
-      // In words mode: finish when all words are completed
       if (mode === 'words' && nextIndex >= updatedWords.length) {
         set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
         get().finishTest();
         return;
       }
 
-      // In time mode: finish if we somehow exhaust the buffer (shouldn't happen)
       if (mode === 'time' && nextIndex >= updatedWords.length) {
         set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
         get().finishTest();
@@ -172,7 +176,7 @@ export const useTypingStore = create<TypingState>((set, get) => ({
 
       const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
       const ks = totalKeystrokes + 1;
-      const metrics = computeMetrics(updatedWords, nextIndex, elapsed, ks);
+      const metrics = computeMetrics(updatedWords, nextIndex, elapsed, ks, totalCorrectChars, totalIncorrectChars);
 
       set({
         words: updatedWords,
@@ -184,15 +188,33 @@ export const useTypingStore = create<TypingState>((set, get) => ({
       return;
     }
 
-    // Normal character typing
+    // ── Normal character typing ──────────────────────────────────────────────
+
+    // 🆕 Only NEW characters (typing forward, not backspacing) get judged and
+    // permanently tallied. Backspacing never reduces these counts — a mistake
+    // you go back and fix still counts as a mistake you made.
+    let newCorrect = totalCorrectChars;
+    let newIncorrect = totalIncorrectChars;
+
+    if (value.length > currentInput.length) {
+      const word = words[currentWordIndex];
+      for (let i = currentInput.length; i < value.length; i++) {
+        const expectedChar = i < word.chars.length ? word.chars[i].char : undefined;
+        if (expectedChar !== undefined && value[i] === expectedChar) {
+          newCorrect++;
+        } else {
+          newIncorrect++; // wrong char, or typed past the end of the word (overflow)
+        }
+      }
+    }
+
     const updatedWords = [...words];
     updatedWords[currentWordIndex] = computeWordChars(updatedWords[currentWordIndex], value);
 
     const ks = totalKeystrokes + 1;
     const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-    const metrics = computeMetrics(updatedWords, currentWordIndex, elapsed, ks);
+    const metrics = computeMetrics(updatedWords, currentWordIndex, elapsed, ks, newCorrect, newIncorrect);
 
-    // Words mode: auto-finish when the last word is fully typed (no space needed)
     const isLastWord = mode === 'words' && currentWordIndex === updatedWords.length - 1;
     const expectedLen = updatedWords[currentWordIndex].chars.length;
     if (isLastWord && value.length >= expectedLen) {
@@ -202,6 +224,8 @@ export const useTypingStore = create<TypingState>((set, get) => ({
         currentInput: value,
         currentWordIndex: currentWordIndex + 1,
         totalKeystrokes: ks,
+        totalCorrectChars: newCorrect,
+        totalIncorrectChars: newIncorrect,
         metrics,
       });
       get().finishTest();
@@ -212,6 +236,8 @@ export const useTypingStore = create<TypingState>((set, get) => ({
       words: updatedWords,
       currentInput: value,
       totalKeystrokes: ks,
+      totalCorrectChars: newCorrect,   // 🆕
+      totalIncorrectChars: newIncorrect, // 🆕
       metrics,
     });
   },
@@ -237,24 +263,36 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     }
   },
 
-  // ── Tick: called every second (time mode only) ───────────────────────────────
+  // ── Tick: called every second ─────────────────────────────────────────────────
 
   tick: () => {
-    const { phase, mode, timeLeft, words, currentWordIndex, totalKeystrokes, startTime } = get();
+    const {
+      phase, mode, timeLeft, words, currentWordIndex, totalKeystrokes,
+      startTime, totalCorrectChars, totalIncorrectChars, wpmHistory,
+    } = get();
     if (phase !== 'running') return;
 
-    // In words mode the timer doesn't count down — finishing all words ends the test
-    if (mode === 'words') return;
+    const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
+    const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes, totalCorrectChars, totalIncorrectChars);
+
+    // 🆕 Record a graph point every second, in both modes.
+    const newHistory: WpmDataPoint[] = [
+      ...wpmHistory,
+      { time: Math.round(elapsed), wpm: metrics.wpm, raw: metrics.rawWpm },
+    ];
+
+    if (mode === 'words') {
+      // Words mode doesn't count down, but we still track the graph.
+      set({ metrics, wpmHistory: newHistory });
+      return;
+    }
 
     const newTimeLeft = timeLeft - 1;
-    const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-    const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes);
-
     if (newTimeLeft <= 0) {
-      set({ timeLeft: 0, metrics });
+      set({ timeLeft: 0, metrics, wpmHistory: newHistory });
       get().finishTest();
     } else {
-      set({ timeLeft: newTimeLeft, metrics });
+      set({ timeLeft: newTimeLeft, metrics, wpmHistory: newHistory });
     }
   },
 
@@ -264,11 +302,11 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     const {
       mode, words, currentWordIndex, totalKeystrokes,
       duration, wordCount, wordSet, startTime,
+      totalCorrectChars, totalIncorrectChars, wpmHistory,
     } = get();
 
     const elapsed = startTime ? (Date.now() - startTime) / 1000 : duration;
-    const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes);
-    const { correct: _c, incorrect: _i, total } = countChars(words, currentWordIndex);
+    const metrics = computeMetrics(words, currentWordIndex, elapsed, totalKeystrokes, totalCorrectChars, totalIncorrectChars);
 
     const result: TestResult = {
       ...metrics,
@@ -278,13 +316,12 @@ export const useTypingStore = create<TypingState>((set, get) => ({
       wordSet,
       timestamp: Date.now(),
       wordsTyped: words.slice(0, currentWordIndex).filter(w => w.isCorrect === true).length,
-      totalChars: total,
+      totalChars: metrics.correctChars + metrics.incorrectChars,
+      wpmHistory,
     };
 
     set({ phase: 'finished', result, metrics });
   },
-
-  // ── Restart ───────────────────────────────────────────────────────────────────
 
   restart: () => {
     get().initTest();
