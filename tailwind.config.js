@@ -11,36 +11,35 @@ export default {
         sans: ['"Inter"', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Clean Dark Theme
         bg: {
-          primary: '#0A0A0F',     // Deepest dark
-          secondary: '#14141E',   // Card backgrounds
-          tertiary: '#1C1C2E',    // Borders / dividers
-          hover: '#25253A',       // Hover states
+          primary: 'rgb(var(--bg-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--bg-secondary) / <alpha-value>)',
+          tertiary: 'rgb(var(--bg-tertiary) / <alpha-value>)',
+          hover: 'rgb(var(--bg-hover) / <alpha-value>)',
         },
         accent: {
-          primary: '#7C6DF0',     // Soft purple - main CTA
-          secondary: '#4ECDC4',   // Mint teal - secondary actions
-          glow: '#7C6DF033',      // Purple glow
-          hover: '#8F81F5',       // Lighter purple
+          primary: 'rgb(var(--accent-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--accent-secondary) / <alpha-value>)',
+          glow: 'rgb(var(--accent-primary) / 0.2)',   // fixed alpha, NOT <alpha-value>
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
         },
         text: {
-          primary: '#F0F0F5',     // Crisp white
-          secondary: '#B8B8D0',   // Soft gray
-          muted: '#6B6B85',       // Dim text
-          cursor: '#7C6DF0',      // Caret
+          primary: 'rgb(var(--text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--text-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted) / <alpha-value>)',
+          cursor: 'rgb(var(--text-cursor) / <alpha-value>)',
         },
         word: {
-          correct: '#B8B8D0',     // Typed correctly
-          incorrect: '#FF6B6B',   // Soft red
-          current: '#F0F0F5',     // Current word
-          pending: '#4A4A66',     // Not typed
+          correct: 'rgb(var(--word-correct) / <alpha-value>)',
+          incorrect: 'rgb(var(--word-incorrect) / <alpha-value>)',
+          current: 'rgb(var(--word-current) / <alpha-value>)',
+          pending: 'rgb(var(--word-pending) / <alpha-value>)',
         },
         status: {
-          success: '#4ECDC4',     // Mint green
-          warning: '#FFD93D',     // Warm yellow
-          error: '#FF6B6B',       // Soft red
-          info: '#7C6DF0',        // Purple
+          success: 'rgb(var(--status-success) / <alpha-value>)',
+          warning: 'rgb(var(--status-warning) / <alpha-value>)',
+          error: 'rgb(var(--status-error) / <alpha-value>)',
+          info: 'rgb(var(--status-info) / <alpha-value>)',
         },
       },
       keyframes: {

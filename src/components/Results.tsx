@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTypingStore } from '../store/useTypingStore';
 import { useSaveResult } from '../hooks/useSaveResult';
+import { TestResult } from '../types';
 import SaveResultIndicator from './auth/SaveResultIndicator';
 
 // ─── Sub-component: a single big stat ────────────────────────────────────────
@@ -102,10 +103,14 @@ const Results: React.FC = () => {
 
   const restartBtnRef = useRef<HTMLButtonElement>(null);
 
+  const savedResultRef = useRef<TestResult | null>(null);
+
   useEffect(() => {
-    if (result) save(result);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result]);
+    if (result && savedResultRef.current !== result) {
+      savedResultRef.current = result;
+      save(result);
+    }
+  }, [result, save]);
 
   // ── Focus + trap: as soon as results appear, the Restart button becomes
   // the sole keyboard target. Autofocus it immediately (Enter works right
