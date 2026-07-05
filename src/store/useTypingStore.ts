@@ -5,6 +5,7 @@ import type {
   WordCount,
   WordSet,
   WordData,
+  CharData,
   LiveMetrics,
   TestPhase,
   TestResult,
@@ -61,6 +62,14 @@ interface TypingState {
   tick: () => void;
   finishTest: () => void;
   restart: () => void;
+
+  // 🆕 Multiplayer integration point (see useMultiplayerStore.ts). Loads
+  // server-issued race text instead of generating a random set locally, then
+  // resets the rest of the state machine exactly like initTest() does.
+  // Deliberately does NOT touch handleInput, handleKeyDown, tick, or
+  // finishTest — the engine's actual typing/scoring logic is completely
+  // unmodified; this only changes where the initial `words` array comes from.
+  loadExternalWords: (words: string[], mode: TestMode, opts?: { duration?: TestDuration }) => void;
 }
 
 // ─── Store Implementation ─────────────────────────────────────────────────────
@@ -325,5 +334,41 @@ export const useTypingStore = create<TypingState>((set, get) => ({
 
   restart: () => {
     get().initTest();
+  },
+
+  // 🆕 See interface comment above. Mirrors initTest()'s reset block exactly
+  // (same fields, same zeroing) — the only difference is `words` is built
+  // from a given string[] instead of generateWords(). currentWordIndex,
+  // metrics, cumulative counters, phase, etc. all reset the same way, so
+  // handleInput/tick/finishTest behave identically afterwards regardless of
+  // whether the words came from generateWords() or the server.
+  loadExternalWords: (words, mode, opts) => {
+    const wordData: WordData[] = words.map((word, i) => ({
+      id: i,
+      chars: word.split('').map((char): CharData => ({ char, state: 'pending' as const })),
+      extras: [],
+      typed: '',
+      isCorrect: null,
+    }));
+
+    const duration = opts?.duration ?? get().duration;
+
+    set({
+      mode,
+      phase: 'idle',
+      words: wordData,
+      currentWordIndex: 0,
+      currentInput: '',
+      timeLeft: duration,
+      duration,
+      wordCount: wordData.length as any,
+      startTime: null,
+      metrics: { wpm: 0, rawWpm: 0, accuracy: 100, correctChars: 0, incorrectChars: 0 },
+      totalKeystrokes: 0,
+      totalCorrectChars: 0,
+      totalIncorrectChars: 0,
+      wpmHistory: [],
+      result: null,
+    });
   },
 }));

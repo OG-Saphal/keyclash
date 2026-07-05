@@ -17,6 +17,19 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import ProfilePage from './pages/ProfilePage';
 import AccountPage from './pages/AccountPage';
 
+// 🆕 Multiplayer pages
+import MultiplayerMenuPage from './pages/multiplayer/MultiplayerMenuPage';
+import CreateRoomPage from './pages/multiplayer/CreateRoomPage';
+import RoomBrowserPage from './pages/multiplayer/RoomBrowserPage';
+import LobbyPage from './pages/multiplayer/LobbyPage';
+import QuickMatchSearchingPage from './pages/multiplayer/QuickMatchSearchingPage';
+import RacePage from './pages/multiplayer/RacePage';
+import MultiplayerResultsPage from './pages/multiplayer/MultiplayerResultsPage';
+
+// 🆕 Shared across singleplayer + multiplayer pages
+import ModeTabBar from './components/ModeTabBar';
+import LeaveRoomConfirmModal from './components/multiplayer/LeaveRoomConfirmModal';
+
 // Components
 import Header from './components/Header';
 import Settings from './components/Settings';
@@ -60,6 +73,7 @@ const TypingView: React.FC = () => {
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header />
+      <ModeTabBar />
 
       <main className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-3xl">
@@ -137,6 +151,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      <LeaveRoomConfirmModal />
       <Routes>
         {/* Auth routes (full-page, own layout) */}
         <Route path="/login" element={<LoginPage />} />
@@ -147,6 +162,19 @@ const App: React.FC = () => {
         {/* Authenticated routes (also full-page) */}
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
+
+        {/* 🆕 Multiplayer routes — MultiplayerMenuPage itself shows the
+            login/signup gate for guests, per spec, so no route-level guard
+            is needed here for that page. Deeper pages (lobby/race/results)
+            assume a room already exists in useMultiplayerStore and redirect
+            back to /multiplayer if not — see each page's own effect. */}
+        <Route path="/multiplayer" element={<MultiplayerMenuPage />} />
+        <Route path="/multiplayer/create" element={<CreateRoomPage />} />
+        <Route path="/multiplayer/browse" element={<RoomBrowserPage />} />
+        <Route path="/multiplayer/lobby" element={<LobbyPage />} />
+        <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
+        <Route path="/multiplayer/race" element={<RacePage />} />
+        <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
 
         {/* Default: typing app */}
         <Route path="*" element={<TypingView />} />
