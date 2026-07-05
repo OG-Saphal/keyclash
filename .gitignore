@@ -1,8 +1,13 @@
-﻿# Dependencies
+﻿# Dependencies (Frontend)
 node_modules/
 dist/
 .env.local
 .env
+
+# 🆕 BACKEND (server folder) - MUST HAVE
+server/node_modules/
+server/dist/
+server/.env
 
 # IDE
 .vscode/
