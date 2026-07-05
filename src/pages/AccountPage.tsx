@@ -150,7 +150,7 @@ const AccountPage: React.FC = () => {
       <header className="flex items-center justify-between px-8 py-4 border-b border-bg-tertiary/40">
         <Link to="/" className="flex items-center gap-0.5">
           <span className="text-accent-primary font-mono font-bold text-xl">key</span>
-          <span className="text-text-primary font-mono font-bold text-xl">clash</span>
+          <span className="text-text-primary font-mono font-bold text-xl">Clash</span>
         </Link>
       </header>
 
@@ -180,10 +180,10 @@ const AccountPage: React.FC = () => {
                   ? usernameStatus === 'available'
                     ? <span className="text-xs text-green-400">✓ Available</span>
                     : usernameStatus === 'taken'
-                    ? <span className="text-xs text-red-400">✗ Already taken</span>
-                    : usernameStatus === 'checking'
-                    ? <span className="text-xs text-text-muted">Checking…</span>
-                    : <span className="text-xs text-yellow-400">Invalid format</span>
+                      ? <span className="text-xs text-red-400">✗ Already taken</span>
+                      : usernameStatus === 'checking'
+                        ? <span className="text-xs text-text-muted">Checking…</span>
+                        : <span className="text-xs text-yellow-400">Invalid format</span>
                   : undefined
               }
             />

@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { UserProfile } from '../types/auth';
 
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -27,7 +28,7 @@ export function rowToProfile(
     createdAt: row.created_at as string,
     totalTests: (row.total_tests as number) ?? 0,
     totalTimeTyped: (row.total_time_typed as number) ?? 0,
-    totalKeystrokes: (row.total_keystrokes as number) ?? 0,
+    avgwpm: (row.avg_wpm as number) ?? 0,
     preferences: {
       defaultMode: (prefs.defaultMode as 'time' | 'words') ?? 'time',
       defaultDuration: (prefs.defaultDuration as 15 | 30 | 60 | 120) ?? 30,

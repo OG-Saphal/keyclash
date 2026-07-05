@@ -1,4 +1,7 @@
 import React, { useEffect } from 'react';
+import FriendsPage from './pages/FriendsPage';
+import FriendProfilePage from './pages/FriendProfilePage';
+import FriendsSidebar from './components/friends/FriendsSidebar';
 import {
   HashRouter,
   Routes,
@@ -44,8 +47,8 @@ import Footer from './components/Footer';
 
 const WordProgress: React.FC = () => {
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
-  const wordCount        = useTypingStore(s => s.wordCount);
-  const phase            = useTypingStore(s => s.phase);
+  const wordCount = useTypingStore(s => s.wordCount);
+  const phase = useTypingStore(s => s.phase);
 
   const colorClass = phase === 'idle' ? 'text-text-muted' : 'text-text-primary';
 
@@ -61,8 +64,8 @@ const WordProgress: React.FC = () => {
 
 const TypingView: React.FC = () => {
   const initTest = useTypingStore(s => s.initTest);
-  const phase    = useTypingStore(s => s.phase);
-  const mode     = useTypingStore(s => s.mode);
+  const phase = useTypingStore(s => s.phase);
+  const mode = useTypingStore(s => s.mode);
 
   useTimer();
 
@@ -151,7 +154,10 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      {/* Both components can coexist here */}
       <LeaveRoomConfirmModal />
+      <FriendsSidebar />
+
       <Routes>
         {/* Auth routes (full-page, own layout) */}
         <Route path="/login" element={<LoginPage />} />
@@ -163,11 +169,7 @@ const App: React.FC = () => {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
 
-        {/* 🆕 Multiplayer routes — MultiplayerMenuPage itself shows the
-            login/signup gate for guests, per spec, so no route-level guard
-            is needed here for that page. Deeper pages (lobby/race/results)
-            assume a room already exists in useMultiplayerStore and redirect
-            back to /multiplayer if not — see each page's own effect. */}
+        {/* 🆕 Multiplayer routes */}
         <Route path="/multiplayer" element={<MultiplayerMenuPage />} />
         <Route path="/multiplayer/create" element={<CreateRoomPage />} />
         <Route path="/multiplayer/browse" element={<RoomBrowserPage />} />
@@ -175,6 +177,10 @@ const App: React.FC = () => {
         <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
         <Route path="/multiplayer/race" element={<RacePage />} />
         <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
+
+        {/* 🆕 Friend routes (from your friend) */}
+        <Route path="/friends" element={<FriendsPage />} />
+        <Route path="/u/:username" element={<FriendProfilePage />} />
 
         {/* Default: typing app */}
         <Route path="*" element={<TypingView />} />

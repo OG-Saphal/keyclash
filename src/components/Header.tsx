@@ -1,36 +1,69 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { Users } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFriendsStore } from '../store/useFriendsStore';
+import { useTypingStore } from '../store/useTypingStore';
 import UserMenu from './auth/UserMenu';
 import VerificationBanner from './auth/VerificationBanner';
 import ThemeToggle from './ThemeToggle';
-import { useGuardedNav } from '../hooks/useGuardedNav';
 
 const Header: React.FC = () => {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const user = useAuthStore(s => s.user);
+  const toggleSidebar = useFriendsStore(s => s.toggleSidebar);
+  const incoming = useFriendsStore(s => s.incoming);
+  const loadAll = useFriendsStore(s => s.loadAll);
 
-  // Guarded navigation handlers
-  const handleLogoClick = useGuardedNav('/');
-  //const handleMultiplayerClick = useGuardedNav('/multiplayer');
+  const location = useLocation();
+  const isHomepage = location.pathname === '/';
+
+  const initTest = useTypingStore(s => s.initTest);
+
+  // Keep the incoming-request badge fresh
+  useEffect(() => {
+    if (user) loadAll(user.id);
+  }, [user, loadAll]);
+
+  // Handle logo click – resets the test (from friend's code)
+  const handleLogoClick = (e: React.MouseEvent) => {
+    if (isHomepage) {
+      e.preventDefault();
+      initTest();
+    }
+  };
 
   return (
     <>
       <header className="flex items-center justify-between px-8 py-4 select-none border-b border-bg-tertiary/40">
-        {/* Logo */}
         <Link
           to="/"
           onClick={handleLogoClick}
           className="flex items-center gap-0.5"
           style={{ textDecoration: 'none' }}
         >
-          <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">keys</span>
-          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">clash</span>
+          <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">key</span>
+          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">Clash</span>
         </Link>
-      
 
-        {/* Right side: theme toggle + auth */}
+        {/* Right side: friends button, theme toggle, auth */}
         <div className="flex items-center gap-3">
+          {/* Friends button – hidden on homepage (from friend's code) */}
+          {isAuthenticated && user && !isHomepage && (
+            <button
+              onClick={toggleSidebar}
+              className="relative text-text-muted hover:text-text-primary transition-colors p-1.5 rounded-lg hover:bg-bg-tertiary/30"
+              title="Friends"
+            >
+              <Users size={18} />
+              {incoming.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-accent-primary text-[9px] font-mono font-bold text-bg-primary flex items-center justify-center">
+                  {incoming.length}
+                </span>
+              )}
+            </button>
+          )}
+
           <ThemeToggle />
 
           {isAuthenticated && user ? (

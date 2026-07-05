@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Settings, LogOut, ShieldAlert } from 'lucide-react';
+import { User, Users, LogOut, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useFriendsStore } from '../../store/useFriendsStore';
 import UserAvatar from './UserAvatar';
 
 const UserMenu: React.FC = () => {
@@ -11,6 +12,8 @@ const UserMenu: React.FC = () => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const toggleSidebar = useFriendsStore(s => s.toggleSidebar);
 
   // Close on outside click
   useEffect(() => {
@@ -30,11 +33,6 @@ const UserMenu: React.FC = () => {
     await logout();
     navigate('/');
   };
-
-  const menuItems = [
-    { icon: <User size={15} />, label: 'Profile', to: '/profile' },
-    { icon: <Settings size={15} />, label: 'Account settings', to: '/account' },
-  ];
 
   return (
     <div ref={menuRef} className="relative">
@@ -80,19 +78,33 @@ const UserMenu: React.FC = () => {
 
             {/* Menu items */}
             <ul className="py-1">
-              {menuItems.map(item => (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary/30 transition-colors"
-                  >
-                    <span className="text-text-muted">{item.icon}</span>
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
+              {/* Profile (first) */}
+              <li>
+                <Link
+                  to="/profile"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary/30 transition-colors"
+                >
+                  <User size={15} />
+                  Profile
+                </Link>
+              </li>
 
+              {/* Friends (second) – opens sidebar */}
+              <li>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    toggleSidebar();
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary/30 transition-colors"
+                >
+                  <Users size={15} />
+                  Friends
+                </button>
+              </li>
+
+              {/* Logout */}
               <li className="border-t border-bg-tertiary/40 mt-1 pt-1">
                 <button
                   onClick={handleLogout}
