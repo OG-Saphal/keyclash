@@ -12,7 +12,7 @@ const ModeTabBar: React.FC = () => {
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  //const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const isMultiplayer = location.pathname.startsWith('/multiplayer');
 

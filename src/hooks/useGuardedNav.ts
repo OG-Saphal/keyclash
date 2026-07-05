@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+//import { useNavigate } from 'react-router-dom';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 
 /**
@@ -16,7 +16,7 @@ import { useMultiplayerStore } from '../store/useMultiplayerStore';
  * what actually shows the dialog and calls navigate() on confirm.)
  */
 export function useGuardedNav(to: string) {
-  const navigate = useNavigate();
+  //const navigate = useNavigate();
   const currentRoom = useMultiplayerStore((s) => s.currentRoom);
   const requestNavigation = useMultiplayerStore((s) => s.requestNavigation);
 
