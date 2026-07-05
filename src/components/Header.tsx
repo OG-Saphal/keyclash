@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom'; // 👈 added useLocation
+import { Link, useLocation } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFriendsStore } from '../store/useFriendsStore';
+import { useTypingStore } from '../store/useTypingStore';
 import UserMenu from './auth/UserMenu';
 import VerificationBanner from './auth/VerificationBanner';
 import ThemeToggle from './ThemeToggle';
@@ -14,18 +15,37 @@ const Header: React.FC = () => {
   const incoming = useFriendsStore(s => s.incoming);
   const loadAll = useFriendsStore(s => s.loadAll);
 
-  const location = useLocation(); // 👈 get current path
-  const isHomepage = location.pathname === '/'; // 👈 check if we're on the root
+  const location = useLocation();
+  const isHomepage = location.pathname === '/';
 
-  // Keep the incoming-request badge fresh without needing the panel open
+  //  Get the reset function from the typing store
+  const initTest = useTypingStore(s => s.initTest);
+
+  // Keep the incoming-request badge fresh
   useEffect(() => {
     if (user) loadAll(user.id);
   }, [user, loadAll]);
 
+  //  Handle logo click – resets the test
+  const handleLogoClick = (e: React.MouseEvent) => {
+    // Only reset if we're on the homepage (so we don't interfere with navigation)
+    if (isHomepage) {
+      e.preventDefault(); // prevent navigation (already on "/")
+      initTest(); // generate new words and reset all state
+    }
+    // If not on homepage, the Link will navigate to "/" and the test will reset
+    // when the TypingView mounts (its useEffect runs initTest).
+  };
+
   return (
     <>
       <header className="flex items-center justify-between px-8 py-4 select-none border-b border-bg-tertiary/40">
-        <Link to="/" className="flex items-center gap-0.5" style={{ textDecoration: 'none' }}>
+        <Link
+          to="/"
+          onClick={handleLogoClick}
+          className="flex items-center gap-0.5"
+          style={{ textDecoration: 'none' }}
+        >
           <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">key</span>
           <span className="text-text-primary font-mono font-bold text-xl tracking-tight">Clash</span>
         </Link>
@@ -53,10 +73,18 @@ const Header: React.FC = () => {
             <UserMenu />
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="font-mono text-sm px-3 py-1.5 rounded-lg text-text-muted hover:text-text-primary transition-colors" style={{ textDecoration: 'none' }}>
+              <Link
+                to="/login"
+                className="font-mono text-sm px-3 py-1.5 rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                style={{ textDecoration: 'none' }}
+              >
                 Login
               </Link>
-              <Link to="/signup" className="font-mono text-sm px-3 py-1.5 rounded-lg bg-accent-primary text-bg-primary hover:opacity-90 transition-opacity" style={{ textDecoration: 'none' }}>
+              <Link
+                to="/signup"
+                className="font-mono text-sm px-3 py-1.5 rounded-lg bg-accent-primary text-bg-primary hover:opacity-90 transition-opacity"
+                style={{ textDecoration: 'none' }}
+              >
                 Sign up
               </Link>
             </div>
