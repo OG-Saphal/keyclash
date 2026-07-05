@@ -19,7 +19,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ title, subtitle, children }) =>
       <header className="flex items-center justify-between px-8 py-4 border-b border-bg-tertiary/40">
         <Link to="/" className="flex items-center gap-0.5">
           <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">key</span>
-          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">clash</span>
+          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">Clash</span>
         </Link>
       </header>
 

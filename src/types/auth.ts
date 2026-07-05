@@ -10,7 +10,7 @@ export interface UserProfile {
   createdAt: string;
   totalTests: number;
   totalTimeTyped: number;
-  totalKeystrokes: number;
+  avgwpm: number;
   preferences: UserPreferences;
 }
 

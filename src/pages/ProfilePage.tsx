@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Camera, Trash2, ArrowLeft, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { fetchHistory } from '../services/results.service';
+import { fetchHistory, fetchUserStats } from '../services/results.service';
 import UserAvatar from '../components/auth/UserAvatar';
 import { Button } from '../components/ui/FormElements';
 import type { StoredResult } from '../types/auth';
@@ -13,15 +13,21 @@ const ProfilePage: React.FC = () => {
   const removeAvatar = useAuthStore(s => s.removeAvatar);
 
   const [recentResults, setRecentResults] = useState<StoredResult[]>([]);
+  const [avgWpm, setAvgWpm] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
+
     fetchHistory(user.id, 1, 10)
       .then(({ results }) => setRecentResults(results))
       .catch(() => null);
+
+    fetchUserStats(user.id)
+      .then(stats => setAvgWpm(stats ? Math.round(stats.avgWpm) : 0))
+      .catch(() => setAvgWpm(null));
   }, [user]);
 
   if (!user) {
@@ -57,21 +63,20 @@ const ProfilePage: React.FC = () => {
   const statCards = [
     { label: 'Total tests', value: user.totalTests.toLocaleString() },
     { label: 'Time typed', value: formatTime(user.totalTimeTyped) },
-    { label: 'Total keystrokes', value: user.totalKeystrokes.toLocaleString() },
+    { label: 'Avg Speed', value: avgWpm === null ? '—' : `${avgWpm} wpm` },
     { label: 'Member since', value: new Date(user.createdAt).toLocaleDateString() },
   ];
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary">
-      {/* Top nav */}
+      {/* 👇 Header – now matches homepage (no extra link) */}
       <header className="flex items-center justify-between px-8 py-4 border-b border-bg-tertiary/40">
         <Link to="/" className="flex items-center gap-0.5">
           <span className="text-accent-primary font-mono font-bold text-xl">key</span>
-          <span className="text-text-primary font-mono font-bold text-xl">clash</span>
+          <span className="text-text-primary font-mono font-bold text-xl">Clash</span>
         </Link>
-        <Link to="/account" className="text-sm text-text-muted hover:text-text-primary transition-colors">
-          Account settings
-        </Link>
+        {/* Header right side is empty – the user menu and theme toggle are rendered elsewhere (e.g., in a global layout) */}
+        {/* If this component is used standalone, you may add ThemeToggle and UserMenu here */}
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-10 flex flex-col gap-8">
@@ -134,6 +139,7 @@ const ProfilePage: React.FC = () => {
             <p className="text-text-muted text-xs mt-0.5 truncate">{user.email}</p>
           </div>
 
+          {/* 👇 This button remains */}
           <Link to="/account">
             <Button variant="ghost" className="shrink-0">Edit profile</Button>
           </Link>

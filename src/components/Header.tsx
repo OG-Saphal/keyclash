@@ -1,24 +1,53 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom'; // 👈 added useLocation
+import { Users } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFriendsStore } from '../store/useFriendsStore';
 import UserMenu from './auth/UserMenu';
 import VerificationBanner from './auth/VerificationBanner';
-import ThemeToggle from './ThemeToggle'; // 🆕
+import ThemeToggle from './ThemeToggle';
 
 const Header: React.FC = () => {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const user = useAuthStore(s => s.user);
+  const toggleSidebar = useFriendsStore(s => s.toggleSidebar);
+  const incoming = useFriendsStore(s => s.incoming);
+  const loadAll = useFriendsStore(s => s.loadAll);
+
+  const location = useLocation(); // 👈 get current path
+  const isHomepage = location.pathname === '/'; // 👈 check if we're on the root
+
+  // Keep the incoming-request badge fresh without needing the panel open
+  useEffect(() => {
+    if (user) loadAll(user.id);
+  }, [user, loadAll]);
 
   return (
     <>
       <header className="flex items-center justify-between px-8 py-4 select-none border-b border-bg-tertiary/40">
         <Link to="/" className="flex items-center gap-0.5" style={{ textDecoration: 'none' }}>
-          <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">keys</span>
-          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">clash</span>
+          <span className="text-accent-primary font-mono font-bold text-xl tracking-tight">key</span>
+          <span className="text-text-primary font-mono font-bold text-xl tracking-tight">Clash</span>
         </Link>
 
         <div className="flex items-center gap-3">
-          <ThemeToggle /> {/* 🆕 */}
+          {/* Friends button – hidden on homepage */}
+          {isAuthenticated && user && !isHomepage && (
+            <button
+              onClick={toggleSidebar}
+              className="relative text-text-muted hover:text-text-primary transition-colors p-1.5 rounded-lg hover:bg-bg-tertiary/30"
+              title="Friends"
+            >
+              <Users size={18} />
+              {incoming.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-accent-primary text-[9px] font-mono font-bold text-bg-primary flex items-center justify-center">
+                  {incoming.length}
+                </span>
+              )}
+            </button>
+          )}
+
+          <ThemeToggle />
 
           {isAuthenticated && user ? (
             <UserMenu />

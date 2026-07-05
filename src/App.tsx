@@ -1,4 +1,7 @@
 import React, { useEffect } from 'react';
+import FriendsPage from './pages/FriendsPage';
+import FriendProfilePage from './pages/FriendProfilePage';
+import FriendsSidebar from './components/friends/FriendsSidebar';
 import {
   HashRouter,
   Routes,
@@ -31,8 +34,8 @@ import Footer from './components/Footer';
 
 const WordProgress: React.FC = () => {
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
-  const wordCount        = useTypingStore(s => s.wordCount);
-  const phase            = useTypingStore(s => s.phase);
+  const wordCount = useTypingStore(s => s.wordCount);
+  const phase = useTypingStore(s => s.phase);
 
   const colorClass = phase === 'idle' ? 'text-text-muted' : 'text-text-primary';
 
@@ -48,8 +51,8 @@ const WordProgress: React.FC = () => {
 
 const TypingView: React.FC = () => {
   const initTest = useTypingStore(s => s.initTest);
-  const phase    = useTypingStore(s => s.phase);
-  const mode     = useTypingStore(s => s.mode);
+  const phase = useTypingStore(s => s.phase);
+  const mode = useTypingStore(s => s.mode);
 
   useTimer();
 
@@ -137,6 +140,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      <FriendsSidebar />
       <Routes>
         {/* Auth routes (full-page, own layout) */}
         <Route path="/login" element={<LoginPage />} />
@@ -147,6 +151,10 @@ const App: React.FC = () => {
         {/* Authenticated routes (also full-page) */}
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
+
+        {/* NEW FRIEND ROUTES */}
+        <Route path="/friends" element={<FriendsPage />} />
+        <Route path="/u/:username" element={<FriendProfilePage />} />
 
         {/* Default: typing app */}
         <Route path="*" element={<TypingView />} />
