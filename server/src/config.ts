@@ -9,8 +9,15 @@ function required(name: string): string {
   return v;
 }
 
+// Safely parse the port. If PORT is missing, empty, "0", or not a positive integer → fallback to 4000.
+const parsePort = (value: string | undefined): number => {
+  if (!value) return 4000;
+  const parsed = parseInt(value, 10);
+  return (isNaN(parsed) || parsed <= 0) ? 4000 : parsed;
+};
+
 export const config = {
-  port: Number(process.env.PORT ?? 4000),
+  port: parsePort(process.env.PORT),
   supabaseUrl: required('SUPABASE_URL'),
   supabaseServiceRoleKey: required('SUPABASE_SERVICE_ROLE_KEY'),
   corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
