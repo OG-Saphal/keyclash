@@ -481,8 +481,8 @@ const FriendsSidebar: React.FC = () => {
 
                     {/* Invite button - only enabled when in a room */}
                     <button
-                        className={`w-full px-4 py-2 cursor-pointer text-xs flex items-center gap-2 transition-colors ${currentRoom
-                            ? 'text-text-primary hover:bg-bg-tertiary/30'
+                        className={`w-full px-4 py-2  text-xs flex items-center gap-2 transition-colors ${currentRoom
+                            ? 'text-text-primary cursor-pointer hover:bg-bg-tertiary/30'
                             : 'text-text-muted cursor-not-allowed'
                             }`}
                         onClick={() => currentRoom && handleInvite(contextMenu.friendId)}
