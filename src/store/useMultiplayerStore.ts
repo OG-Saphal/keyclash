@@ -23,8 +23,6 @@ interface MultiplayerState {
   asSpectator: boolean;
   roomList: RoomListEntry[];
 
-  // Live progress of everyone EXCEPT the local player — the local player's
-  // own progress lives in useTypingStore and is never duplicated here.
   otherPlayersProgress: Record<string, OtherPlayerProgress>;
 
   raceWords: string[] | null;
@@ -34,10 +32,6 @@ interface MultiplayerState {
   quickMatchQueuedAt: number | null;
   quickMatchSettings: QuickMatchSettings | null;
 
-  // 🆕 Guarded navigation — set when the user clicks something that would
-  // navigate away (e.g. the logo) while they're in a room. The actual
-  // navigate() call happens in <LeaveRoomConfirmModal>, which is the one
-  // place with access to react-router's useNavigate.
   pendingNavigationTarget: string | null;
   requestNavigation: (to: string) => void;
   confirmNavigation: () => void;
@@ -60,8 +54,9 @@ interface MultiplayerState {
   kickPlayer: (targetUserId: string) => void;
   transferHost: (targetUserId: string) => void;
   startRace: () => void;
+  inviteFriendToRoom: (friendUserId: string) => void; // <-- NEW
 
-  // ── Race integration with useTypingStore ──
+  // ── Race integration ──
   beginProgressReporting: () => void;
   stopProgressReporting: () => void;
   submitFinalResult: () => Promise<void>;
@@ -93,8 +88,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
 
   pendingNavigationTarget: null,
   requestNavigation: (to) => {
-    // Only worth guarding if actually in a room — otherwise just a no-op
-    // marker that <LeaveRoomConfirmModal> ignores.
     if (get().currentRoom) set({ pendingNavigationTarget: to });
   },
   confirmNavigation: () => {
@@ -123,11 +116,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         }
       });
       mp.onLobbyKicked(({ targetUserId }) => {
-        // If WE were the one kicked, clear local room state so the Lobby
-        // page's "no room -> redirect to /multiplayer" effect kicks in.
-        // (Everyone else just gets the room:updated broadcast that already
-        // follows this event, showing the player list without the kicked
-        // player — no special handling needed for them.)
         const myUserId = useAuthStore.getState().user?.id;
         if (myUserId && myUserId === targetUserId) {
           set({ currentRoom: null, raceWords: null, raceStartTimestamp: null, otherPlayersProgress: {} });
@@ -230,10 +218,14 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
     if (room) mp.startRace(room.id);
   },
 
+  // ─── NEW: Invite a friend to the current room ─────────────────────────────
+  inviteFriendToRoom: (friendUserId) => {
+    const room = get().currentRoom;
+    if (!room) return;
+    mp.inviteToRoom(room.id, friendUserId);
+  },
+
   // ── Race integration ─────────────────────────────────────────────────────
-  // Feeds server race text into the EXISTING typing engine, and separately
-  // subscribes to useTypingStore's own state to emit throttled progress —
-  // it never reimplements or forks the typing engine itself.
 
   beginProgressReporting: () => {
     const room = get().currentRoom;
@@ -247,8 +239,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
       const currentRoom = get().currentRoom;
       if (!currentRoom) return;
 
-      // Only emit when something actually changed, to avoid spamming
-      // identical progress packets while the player is mid-word.
       if (typingState.currentWordIndex === lastReportedWordIndex && typingState.metrics.wpm === 0) return;
       lastReportedWordIndex = typingState.currentWordIndex;
 
@@ -260,7 +250,7 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         rawWpm: typingState.metrics.rawWpm,
         accuracy: typingState.metrics.accuracy,
       });
-    }, 350); // within the spec's 250-500ms throttle window
+    }, 350);
   },
 
   stopProgressReporting: () => {
@@ -286,10 +276,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
       totalIncorrectChars: result.incorrectChars,
       clientElapsedMs: typingState.startTime ? Date.now() - typingState.startTime : 0,
     });
-    // Final, authoritative stats arrive back via the 'race:updated' /
-    // 'race:results' push (see connect() subscriptions) — we don't trust or
-    // display the client-computed result as final for multiplayer, only as
-    // the live in-progress numbers while racing.
   },
 
   // ── Quick match ──────────────────────────────────────────────────────────

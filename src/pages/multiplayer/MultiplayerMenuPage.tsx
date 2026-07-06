@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Plus, ListFilter, Lock } from 'lucide-react';
+import { Zap, Plus, ListFilter, Lock, Swords, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 
-/** Guests land here only via a direct URL — the tab bar already gates the normal path. */
+/** Guest gate – shown to unauthenticated users */
 const GuestGate: React.FC = () => {
   const navigate = useNavigate();
   return (
@@ -15,10 +15,10 @@ const GuestGate: React.FC = () => {
       <Header />
       <ModeTabBar />
       <main className="flex-1 flex items-center justify-center px-4">
-        <div className="max-w-md w-full text-center bg-bg-secondary rounded-2xl p-8 border border-border">
-          <div className="w-14 h-14 mx-auto rounded-full bg-accent/15 flex items-center justify-center relative mb-4">
-            <Zap className="w-7 h-7 text-accent" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-bg-secondary border border-border flex items-center justify-center">
+        <div className="max-w-md w-full text-center bg-bg-secondary rounded-2xl p-8 shadow-lg">
+          <div className="w-14 h-14 mx-auto rounded-full bg-accent-primary/15 flex items-center justify-center relative mb-4">
+            <Zap className="w-7 h-7 text-accent-primary" />
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-bg-secondary flex items-center justify-center shadow-sm">
               <Lock className="w-3 h-3 text-text-muted" />
             </div>
           </div>
@@ -28,13 +28,13 @@ const GuestGate: React.FC = () => {
           </p>
           <div className="flex gap-3 justify-center">
             <button
-              className="px-5 py-2 rounded-lg bg-accent text-bg-primary font-semibold"
+              className="px-5 py-2 rounded-lg bg-accent-primary text-bg-primary font-semibold"
               onClick={() => navigate('/login?redirect=/multiplayer')}
             >
               Log In
             </button>
             <button
-              className="px-5 py-2 rounded-lg border border-border"
+              className="px-5 py-2 rounded-lg bg-bg-secondary shadow-sm"
               onClick={() => navigate('/signup?redirect=/multiplayer')}
             >
               Sign Up
@@ -47,6 +47,7 @@ const GuestGate: React.FC = () => {
   );
 };
 
+/** Main multiplayer menu – only visible to authenticated users */
 const MultiplayerMenuPage: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const connectionStatus = useMultiplayerStore((s) => s.connectionStatus);
@@ -68,57 +69,76 @@ const MultiplayerMenuPage: React.FC = () => {
   const wordSetLabel = { english200: 'English 200', english1k: 'English 1k', common: 'Common' }[wordSet];
   const modeLabel = mode === 'time' ? 'Time' : 'Words';
 
+  // Select class with custom arrow
+  const selectClass =
+    'bg-bg-primary/60 border-0 rounded-full px-3 py-1.5 pr-8 text-[13px] focus:outline-none focus:ring-1 focus:ring-accent-primary shadow-sm appearance-none';
+
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
       <Header />
       <ModeTabBar />
-      <main className="flex-1 flex flex-col items-center justify-center px-4 gap-8 py-10">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold flex items-center gap-2 justify-center">
-            <Zap className="w-7 h-7 text-accent" /> Multiplayer
-          </h1>
-          {connectionStatus === 'connecting' && (
-            <p className="text-text-muted text-sm mt-2">Connecting to the race server…</p>
-          )}
-          {connectionStatus === 'error' && (
-            <p className="text-red-400 text-sm mt-2">
-              Couldn't reach the multiplayer server. Check your connection and try again.
-            </p>
-          )}
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl">
-          {/* Quick Match — hero card, spans both columns */}
-          <div className="md:col-span-2 bg-gradient-to-br from-accent/15 to-bg-secondary border border-accent/30 rounded-2xl p-6 flex flex-col gap-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-bold text-lg flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> Quick Match</h2>
-                <p className="text-sm text-text-muted mt-1">Jump into the next available race.</p>
+      <div className="text-center pt-9 pb-0">
+        <h1 className="text-2xl font-bold flex items-center gap-2 justify-center">
+          <Swords className="w-6 h-6 text-accent-primary" /> Multiplayer
+        </h1>
+        {connectionStatus === 'connecting' && (
+          <p className="text-text-muted text-xs mt-1">Connecting to the race server…</p>
+        )}
+        {connectionStatus === 'error' && (
+          <p className="text-red-400 text-xs mt-1">
+            Couldn't reach the multiplayer server. Check your connection and try again.
+          </p>
+        )}
+      </div>
+
+      <main className="flex-1 flex items-center justify-center px-4 pb-4 overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-3 w-full max-w-3xl">
+          {/* Quick Match */}
+          <div className="md:row-span-2 bg-bg-secondary rounded-xl p-6 flex flex-col justify-between gap-4 shadow-md h-full min-h-[260px]">
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-[17px] flex items-center gap-1.5">
+                    <Zap className="w-5 h-5 text-accent-primary" /> Quick Match
+                  </h2>
+                  <p className="text-[14px] text-text-muted my-2">Jump into the next available race.</p>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as any)}
-                className="bg-bg-primary border border-border rounded-full px-3 py-1.5 text-sm"
-              >
-                <option value="time">Mode: Time</option>
-                <option value="words">Mode: Words</option>
-              </select>
-              <select
-                value={wordSet}
-                onChange={(e) => setWordSet(e.target.value as any)}
-                className="bg-bg-primary border border-border rounded-full px-3 py-1.5 text-sm"
-              >
-                <option value="english200">Word Set: English 200</option>
-                <option value="english1k">Word Set: English 1k</option>
-                <option value="common">Word Set: Common</option>
-              </select>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {/* Mode dropdown */}
+              <div className="relative">
+                <select
+                  className={selectClass}
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as any)}
+                >
+                  <option value="time">Mode: Time</option>
+                  <option value="words">Mode: Words</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+              </div>
+
+              {/* Word Set dropdown */}
+              <div className="relative">
+                <select
+                  className={selectClass}
+                  value={wordSet}
+                  onChange={(e) => setWordSet(e.target.value as any)}
+                >
+                  <option value="english200">Word Set: English 200</option>
+                  <option value="english1k">Word Set: English 1k</option>
+                  <option value="common">Word Set: Common</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+              </div>
             </div>
 
             <button
-              className="px-5 py-3 rounded-xl bg-accent text-bg-primary font-bold tracking-wide hover:brightness-110 transition-all"
+              className="px-4 py-3 rounded-lg bg-accent-primary text-white font-[600] text-[13px] tracking-wide text-center cursor-pointer 
+                   hover:scale-95 active:scale-90 transition-transform duration-200"
               onClick={() => {
                 joinQuickMatch({ mode, wordSet });
                 navigate('/multiplayer/quick-match');
@@ -126,32 +146,39 @@ const MultiplayerMenuPage: React.FC = () => {
             >
               FIND MATCH
             </button>
-            <p className="text-xs text-text-muted -mt-2">Searching for {modeLabel} · {wordSetLabel}</p>
+
+            <p className="text-[11px] text-text-muted text-center">
+              Searching for {modeLabel} · {wordSetLabel}
+            </p>
           </div>
 
+          {/* Create Room */}
           <button
-            className="bg-bg-secondary border border-border rounded-2xl p-6 flex flex-col items-start gap-3 text-left hover:border-accent/50 hover:-translate-y-0.5 transition-all"
+            className="bg-bg-secondary rounded-xl px-4 py-4 flex items-center gap-3 text-left 
+                 hover:scale-[0.98] active:scale-[0.95] cursor-pointer transition-transform duration-200 hover:shadow-lg"
             onClick={() => navigate('/multiplayer/create')}
           >
-            <div className="w-11 h-11 rounded-full bg-accent/15 flex items-center justify-center">
-              <Plus className="w-5 h-5 text-accent" />
+            <div className="w-10 h-10 rounded-full bg-accent-primary/15 flex items-center justify-center shrink-0">
+              <Plus className="w-5 h-5 text-accent-primary" />
             </div>
-            <div>
-              <h2 className="font-semibold">Create Room</h2>
-              <p className="text-sm text-text-muted">Configure your own race and invite friends.</p>
+            <div className="flex flex-col gap-0.5">
+              <h2 className="font-semibold text-[16px]">Create Room</h2>
+              <p className="text-[14px] text-text-muted">Configure your own race and invite friends.</p>
             </div>
           </button>
 
+          {/* Join Room */}
           <button
-            className="bg-bg-secondary border border-border rounded-2xl p-6 flex flex-col items-start gap-3 text-left hover:border-accent/50 hover:-translate-y-0.5 transition-all"
+            className="bg-bg-secondary rounded-xl px-4 py-4 flex items-center gap-3 text-left 
+                 hover:scale-[0.98] active:scale-[0.95] cursor-pointer transition-transform duration-200 hover:shadow-lg"
             onClick={() => navigate('/multiplayer/browse')}
           >
-            <div className="w-11 h-11 rounded-full bg-accent/15 flex items-center justify-center">
-              <ListFilter className="w-5 h-5 text-accent" />
+            <div className="w-10 h-10 rounded-full bg-accent-primary/15 flex items-center justify-center shrink-0">
+              <ListFilter className="w-5 h-5 text-accent-primary" />
             </div>
-            <div>
-              <h2 className="font-semibold">Join Room</h2>
-              <p className="text-sm text-text-muted">Browse public rooms or enter a code.</p>
+            <div className="flex flex-col gap-0.5">
+              <h2 className="font-semibold text-[16px]">Join Room</h2>
+              <p className="text-[14px] text-text-muted">Browse public rooms or enter a code.</p>
             </div>
           </button>
         </div>

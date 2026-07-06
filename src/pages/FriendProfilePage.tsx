@@ -54,33 +54,11 @@ const FriendProfilePage: React.FC = () => {
                 if (cancelled) return;
                 setFriendship(status);
 
-                // 3) Build the full profile object
-                const fullProfile: UserProfile = {
-                    id: profileData.id,
-                    username: profileData.username,
-                    displayName: profileData.display_name,
-                    avatarUrl: profileData.avatar_url,
-                    email: '', // not stored in profiles
-                    emailVerified: false,
-                    createdAt: profileData.created_at,
-                    totalTests: profileData.total_tests ?? 0,
-                    totalTimeTyped: profileData.total_time_typed ?? 0,
-                    preferences: profileData.preferences ?? {
-                        theme: 'dark',
-                        defaultMode: 'time',
-                        defaultWordSet: 'english200',
-                        defaultDuration: 15,
-                        defaultWordCount: 25,
-                    },
-                    avgwpm: profileData.total_time_typed > 0
-                        ? (profileData.total_keystrokes / 5) / (profileData.total_time_typed / 60)
-                        : 0,
-                };
-
+                let avgWpm = 0;
                 let friendsSince: string | null = null;
                 let results: StoredResult[] = [];
 
-                // 4) If friends, fetch "friends since" and recent results in parallel
+                // 3) If friends, fetch "friends since" and recent results
                 if (status === 'friends' && requestId) {
                     const [sinceData, histData] = await Promise.all([
                         supabase
@@ -97,14 +75,47 @@ const FriendProfilePage: React.FC = () => {
                         }
                         if (histData.results) {
                             results = histData.results;
+                            // Compute average WPM from the user's recent results
+                            const validResults = results.filter(r => r.wpm && r.wpm > 0);
+                            if (validResults.length > 0) {
+                                const sum = validResults.reduce((acc, r) => acc + r.wpm, 0);
+                                avgWpm = sum / validResults.length;
+                            }
                         }
                     }
                 }
 
+                // Fallback: if we don't have a computed average, use profile stats
+                if (avgWpm === 0 && profileData) {
+                    avgWpm = profileData.total_time_typed > 0
+                        ? (profileData.total_keystrokes / 5) / (profileData.total_time_typed / 60)
+                        : 0;
+                }
+
                 if (!cancelled) {
+                    const fullProfile: UserProfile = {
+                        id: profileData.id,
+                        username: profileData.username,
+                        displayName: profileData.display_name,
+                        avatarUrl: profileData.avatar_url,
+                        email: '',
+                        emailVerified: false,
+                        createdAt: profileData.created_at,
+                        totalTests: profileData.total_tests ?? 0,
+                        totalTimeTyped: profileData.total_time_typed ?? 0,
+                        preferences: profileData.preferences ?? {
+                            theme: 'dark',
+                            defaultMode: 'time',
+                            defaultWordSet: 'english200',
+                            defaultDuration: 15,
+                            defaultWordCount: 25,
+                        },
+                        avgwpm: avgWpm,
+                    };
+
                     setProfile(fullProfile);
-                    setFriendsSince(friendsSince);
                     setResults(results);
+                    setFriendsSince(friendsSince);
                     setLoading(false);
                 }
             } catch (err) {

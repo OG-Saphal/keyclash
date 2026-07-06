@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFriendsStore } from '../store/useFriendsStore';
 import { useTypingStore } from '../store/useTypingStore';
+import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import UserMenu from './auth/UserMenu';
 import VerificationBanner from './auth/VerificationBanner';
 import ThemeToggle from './ThemeToggle';
@@ -16,20 +17,32 @@ const Header: React.FC = () => {
   const loadAll = useFriendsStore(s => s.loadAll);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const isHomepage = location.pathname === '/';
+  const isMultiplayer = location.pathname.startsWith('/multiplayer');
 
   const initTest = useTypingStore(s => s.initTest);
+  const requestNavigation = useMultiplayerStore(s => s.requestNavigation);
 
   // Keep the incoming-request badge fresh
   useEffect(() => {
     if (user) loadAll(user.id);
   }, [user, loadAll]);
 
-  // Handle logo click – resets the test (from friend's code)
+  // Handle logo click
   const handleLogoClick = (e: React.MouseEvent) => {
     if (isHomepage) {
       e.preventDefault();
       initTest();
+      return;
+    }
+    // If we're on any multiplayer page, show exit modal
+    if (isMultiplayer) {
+      e.preventDefault();
+      requestNavigation('/');
+    } else {
+      // Otherwise just navigate to home
+      navigate('/');
     }
   };
 
@@ -48,8 +61,8 @@ const Header: React.FC = () => {
 
         {/* Right side: friends button, theme toggle, auth */}
         <div className="flex items-center gap-3">
-          {/* Friends button – hidden on homepage (from friend's code) */}
-          {isAuthenticated && user && !isHomepage && (
+          {/* Friends button – hidden on homepage AND on multiplayer pages */}
+          {isAuthenticated && user && !isHomepage && !isMultiplayer && (
             <button
               onClick={toggleSidebar}
               className="relative text-text-muted hover:text-text-primary transition-colors p-1.5 rounded-lg hover:bg-bg-tertiary/30"

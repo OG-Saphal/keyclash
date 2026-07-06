@@ -39,7 +39,7 @@ const UserMenu: React.FC = () => {
       {/* Trigger button */}
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
         aria-haspopup="true"
         aria-expanded={open}
       >
@@ -97,7 +97,7 @@ const UserMenu: React.FC = () => {
                     setOpen(false);
                     toggleSidebar();
                   }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary/30 transition-colors"
+                  className="flex w-full items-center cursor-pointer gap-2.5 px-4 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-tertiary/30 transition-colors"
                 >
                   <Users size={15} />
                   Friends
@@ -108,7 +108,7 @@ const UserMenu: React.FC = () => {
               <li className="border-t border-bg-tertiary/40 mt-1 pt-1">
                 <button
                   onClick={handleLogout}
-                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="flex w-full items-center cursor-pointer gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
                 >
                   <LogOut size={15} />
                   Sign out
