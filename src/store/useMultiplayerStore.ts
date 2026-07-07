@@ -3,15 +3,15 @@ import { useTypingStore } from './useTypingStore';
 import { useAuthStore } from './useAuthStore';
 import * as mp from '../services/multiplayer.service';
 import type { RoomStateDTO, RoomListEntry, CreateRoomInput, QuickMatchSettings } from '../types/multiplayer';
-import type { ColorId } from '../data/playerColors'; // 🆕 Part 1
-import { getFrozenOffsetInWord, computeAbsoluteOffset } from '../utils/multiplayerCursor'; // 🆕 Part 1
+import type { ColorId } from '../data/playerColors';
+import { getFrozenOffsetInWord, computeAbsoluteOffset } from '../utils/multiplayerCursor';
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────
 
 interface OtherPlayerProgress {
   userId: string;
   wordIndex: number;
-  completedChars: number; // 🆕 Part 2
+  completedChars: number;
   elapsedMs: number;
   wpm: number;
   rawWpm: number;
@@ -32,7 +32,7 @@ interface MultiplayerState {
   quickMatchStatus: 'idle' | 'searching' | 'found';
   quickMatchQueuedAt: number | null;
   quickMatchSettings: QuickMatchSettings | null;
-  // 🆕 Guarded navigation — set when the user clicks something that would
+  // Guarded navigation — set when the user clicks something that would
   // navigate away (e.g. the logo) while they're in a room. The actual
   // navigate() call happens in <LeaveRoomConfirmModal>, which is the one
   // place with access to react-router's useNavigate.
@@ -52,10 +52,11 @@ interface MultiplayerState {
   leaveRoom: () => void;
   setReady: (isReady: boolean) => void;
   updateSettings: (patch: Partial<CreateRoomInput>) => void;
-  setColor: (colorId: ColorId) => void; // 🆕 Part 1
+  setColor: (colorId: ColorId) => void;
   kickPlayer: (targetUserId: string) => void;
   transferHost: (targetUserId: string) => void;
   startRace: () => void;
+  inviteFriendToRoom: (friendUserId: string) => void; // NEW
   // ── Race integration with useTypingStore ──
   beginProgressReporting: () => void;
   stopProgressReporting: () => void;
@@ -84,8 +85,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   quickMatchSettings: null,
   pendingNavigationTarget: null,
   requestNavigation: (to) => {
-    // Only worth guarding if actually in a room — otherwise just a no-op
-    // marker that <LeaveRoomConfirmModal> ignores.
     if (get().currentRoom) set({ pendingNavigationTarget: to });
   },
   confirmNavigation: () => {
@@ -110,11 +109,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         }
       });
       mp.onLobbyKicked(({ targetUserId }) => {
-        // If WE were the one kicked, clear local room state so the Lobby
-        // page's "no room -> redirect to /multiplayer" effect kicks in.
-        // (Everyone else just gets the room:updated broadcast that already
-        // follows this event, showing the player list without the kicked
-        // player — no special handling needed for them.)
         const myUserId = useAuthStore.getState().user?.id;
         if (myUserId && myUserId === targetUserId) {
           set({ currentRoom: null, raceWords: null, raceStartTimestamp: null, otherPlayersProgress: {} });
@@ -193,8 +187,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
     const room = get().currentRoom;
     if (room) mp.updateRoomSettings(room.id, patch);
   },
-  // 🆕 Part 1 — routed through multiplayer.service.ts like every other room
-  // action; never calls socket.emit directly from the store.
   setColor: (colorId) => {
     const room = get().currentRoom;
     if (room) mp.setColor(room.id, colorId);
@@ -210,6 +202,13 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   startRace: () => {
     const room = get().currentRoom;
     if (room) mp.startRace(room.id);
+  },
+
+  // ─── NEW: Invite a friend to the current room ─────────────────────────────
+  inviteFriendToRoom: (friendUserId) => {
+    const room = get().currentRoom;
+    if (!room) return;
+    mp.inviteToRoom(room.id, friendUserId);
   },
 
   // ── Race integration ─────────────────────────────────────────────────────
@@ -260,7 +259,7 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         rawWpm: typingState.metrics.rawWpm,
         accuracy: typingState.metrics.accuracy,
       });
-    }, 350); // within the spec's 250-500ms throttle window
+    }, 350);
   },
   stopProgressReporting: () => {
     if (progressInterval) {
@@ -282,10 +281,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
       totalIncorrectChars: result.incorrectChars,
       clientElapsedMs: typingState.startTime ? Date.now() - typingState.startTime : 0,
     });
-    // Final, authoritative stats arrive back via the 'race:updated' /
-    // 'race:results' push (see connect() subscriptions) — we don't trust or
-    // display the client-computed result as final for multiplayer, only as
-    // the live in-progress numbers while racing.
   },
 
   // ── Quick match ──────────────────────────────────────────────────────────

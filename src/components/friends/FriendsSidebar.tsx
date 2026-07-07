@@ -1,27 +1,31 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { X, Check, Search, UserMinus, Loader } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Check, Search, UserMinus, Loader, UserPlus, UserCog, User } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useFriendsStore } from '../../store/useFriendsStore';
+import { usePresenceStore } from '../../store/usePresenceStore';
+import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import UserAvatar from '../auth/UserAvatar';
-// import type { FriendProfileSummary } from '../../types/friends';
 
-// ─── Debounce helper ──────────────────────────────────────────────────────────
+// ─── Debounce ────────────────────────────────────────────────────────────────
 const useDebounce = <T,>(value: T, delay: number): T => {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
     useEffect(() => {
         const handler = setTimeout(() => setDebouncedValue(value), delay);
-        return () => clearTimeout(handler);
+        return () => clearInterval(handler);
     }, [value, delay]);
     return debouncedValue;
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Component ──────────────────────────────────────────────────────────────
 const FriendsSidebar: React.FC = () => {
+    const navigate = useNavigate();
     const user = useAuthStore(s => s.user);
+    const onlineUsers = usePresenceStore(s => s.onlineUsers);
+    const currentRoom = useMultiplayerStore(s => s.currentRoom);
+    const inviteFriendToRoom = useMultiplayerStore(s => s.inviteFriendToRoom);
 
-    // ── Store state ──
     const sidebarOpen = useFriendsStore(s => s.sidebarOpen);
     const closeSidebar = useFriendsStore(s => s.closeSidebar);
     const friends = useFriendsStore(s => s.friends);
@@ -37,33 +41,56 @@ const FriendsSidebar: React.FC = () => {
     const cancelRequest = useFriendsStore(s => s.cancel);
     const unfriend = useFriendsStore(s => s.unfriend);
 
-    // ── Local UI state ──
     const [searchQuery, setSearchQuery] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
     const [filterQuery, setFilterQuery] = useState('');
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
+    // ─── Context menu ────────────────────────────────────────────────────────────
+    const [contextMenu, setContextMenu] = useState<{
+        x: number;
+        y: number;
+        friendId: string;
+        username: string;
+    } | null>(null);
+
+    // ─── Nicknames (stored in localStorage) ─────────────────────────────────────
+    const [nicknames, setNicknames] = useState<Record<string, string>>(() => {
+        try {
+            const saved = localStorage.getItem('friendNicknames');
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
+
+    const [nicknameModal, setNicknameModal] = useState<{
+        friendId: string;
+        currentNickname: string;
+    } | null>(null);
+    const [nicknameInput, setNicknameInput] = useState('');
+
     const addInputRef = useRef<HTMLInputElement>(null);
     const filterInputRef = useRef<HTMLInputElement>(null);
-
+    const contextMenuRef = useRef<HTMLDivElement>(null);
+    const nicknameInputRef = useRef<HTMLInputElement>(null); // 👈 added for focus
     const debouncedSearch = useDebounce(searchQuery, 300);
 
-    // Load friends when sidebar opens
+    // ─── Effects ────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (sidebarOpen && user) loadAll(user.id);
     }, [sidebarOpen, user, loadAll]);
 
-    // Reset state when sidebar closes
     useEffect(() => {
         if (!sidebarOpen) {
             setSearchQuery('');
             clearSearch();
             setFilterQuery('');
             setConfirmRemoveId(null);
+            setContextMenu(null);
         }
     }, [sidebarOpen, clearSearch]);
 
-    // Perform search using the store's `search` action
     useEffect(() => {
         if (!debouncedSearch.trim() || !user) {
             clearSearch();
@@ -74,7 +101,38 @@ const FriendsSidebar: React.FC = () => {
             .finally(() => setSearchLoading(false));
     }, [debouncedSearch, user, search, clearSearch]);
 
-    // Force focus helper (fixes the click‑to‑focus issue)
+    // Close context menu on scroll or resize
+    useEffect(() => {
+        const close = () => setContextMenu(null);
+        window.addEventListener('scroll', close);
+        window.addEventListener('resize', close);
+        return () => {
+            window.removeEventListener('scroll', close);
+            window.removeEventListener('resize', close);
+        };
+    }, []);
+
+    // Click outside closes context menu
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+                setContextMenu(null);
+            }
+        };
+        if (contextMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [contextMenu]);
+
+    // ─── Focus nickname input when modal opens ─────────────────────────────────
+    useEffect(() => {
+        if (nicknameModal) {
+            setTimeout(() => nicknameInputRef.current?.focus(), 50);
+        }
+    }, [nicknameModal]);
+
+    // ─── Helpers ────────────────────────────────────────────────────────────────
     const forceFocus = (ref: React.RefObject<HTMLInputElement>) => (e: React.MouseEvent | React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -84,14 +142,13 @@ const FriendsSidebar: React.FC = () => {
         }
     };
 
-    // Auto‑focus the "Add a friend" input when sidebar opens
     useEffect(() => {
         if (sidebarOpen) {
             setTimeout(() => addInputRef.current?.focus(), 100);
         }
     }, [sidebarOpen]);
 
-    // Memoized maps for quick lookups
+    // ─── Memoized lookups ──────────────────────────────────────────────────────
     const friendIds = useMemo(() => new Set(friends.map(f => f.otherUser.id)), [friends]);
     const incomingIds = useMemo(() => new Set(incoming.map(r => r.otherUser.id)), [incoming]);
     const outgoingMap = useMemo(() => {
@@ -110,7 +167,13 @@ const FriendsSidebar: React.FC = () => {
         );
     }, [friends, filterQuery]);
 
-    // ── Handlers ──
+    const isFriend = (userId: string) => friendIds.has(userId);
+    const isIncoming = (userId: string) => incomingIds.has(userId);
+    const isOutgoing = (userId: string) => outgoingMap.has(userId);
+    const isSelf = (userId: string) => user?.id === userId;
+    const isOnline = (userId: string) => onlineUsers.has(userId);
+
+    // ─── Handlers ──────────────────────────────────────────────────────────────
     const handleSendRequest = async (targetUserId: string) => {
         if (!user) return;
         await sendRequest(user.id, targetUserId);
@@ -125,12 +188,43 @@ const FriendsSidebar: React.FC = () => {
         if (!user) return;
         await unfriend(requestId, user.id);
         setConfirmRemoveId(null);
+        setContextMenu(null);
     };
 
-    const isFriend = (userId: string) => friendIds.has(userId);
-    const isIncoming = (userId: string) => incomingIds.has(userId);
-    const isOutgoing = (userId: string) => outgoingMap.has(userId);
-    const isSelf = (userId: string) => user?.id === userId;
+    const handleInvite = (friendId: string) => {
+        // Only allow invite if we're currently in a room
+        if (!currentRoom) return;
+        inviteFriendToRoom(friendId);
+        setContextMenu(null);
+    };
+
+    const handleViewProfile = (username: string) => {
+        navigate(`/u/${username}`);
+        setContextMenu(null);
+    };
+
+    const openNicknameModal = (friendId: string, currentName: string) => {
+        setNicknameModal({ friendId, currentNickname: currentName });
+        setNicknameInput(nicknames[friendId] || '');
+        setContextMenu(null);
+    };
+
+    const saveNickname = () => {
+        if (!nicknameModal) return;
+        const updated = { ...nicknames };
+        if (nicknameInput.trim()) {
+            updated[nicknameModal.friendId] = nicknameInput.trim();
+        } else {
+            delete updated[nicknameModal.friendId];
+        }
+        setNicknames(updated);
+        localStorage.setItem('friendNicknames', JSON.stringify(updated));
+        setNicknameModal(null);
+    };
+
+    const getDisplayName = (friend: { otherUser: { id: string; displayName: string; username: string } }) => {
+        return nicknames[friend.otherUser.id] || friend.otherUser.displayName;
+    };
 
     if (!user) return null;
 
@@ -160,9 +254,7 @@ const FriendsSidebar: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* Scrollable content */}
                         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-6">
-
                             {/* ─── Add a friend ─── */}
                             <section className="space-y-2">
                                 <h3 className="font-mono font-semibold text-xs text-text-muted uppercase tracking-wider">Add a friend</h3>
@@ -185,8 +277,6 @@ const FriendsSidebar: React.FC = () => {
                                         <Loader size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted animate-spin" />
                                     )}
                                 </div>
-
-                                {/* Search results */}
                                 <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 pr-1">
                                     {searchQuery.trim() && searchResults.length === 0 && !searchLoading && (
                                         <p className="text-xs text-text-muted py-1">No users found.</p>
@@ -197,7 +287,6 @@ const FriendsSidebar: React.FC = () => {
                                         const hasIncoming = isIncoming(result.id);
                                         const isOwn = isSelf(result.id);
                                         const disabled = alreadyFriend || isOwn;
-
                                         return (
                                             <div key={result.id} className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-bg-tertiary/30 transition-colors">
                                                 <UserAvatar
@@ -208,7 +297,6 @@ const FriendsSidebar: React.FC = () => {
                                                     <p className="text-xs text-text-primary truncate">{result.displayName}</p>
                                                     <p className="text-[10px] text-text-muted truncate">@{result.username}</p>
                                                 </div>
-
                                                 {hasOutgoing ? (
                                                     <button
                                                         onClick={() => handleCancel(outgoingMap.get(result.id)!)}
@@ -240,7 +328,7 @@ const FriendsSidebar: React.FC = () => {
                                 </div>
                             </section>
 
-                            {/* ─── Requests (incoming) ─── */}
+                            {/* ─── Requests ─── */}
                             <section className="space-y-2">
                                 <h3 className="font-mono font-semibold text-xs text-text-muted uppercase tracking-wider">
                                     Requests ({incoming.length})
@@ -306,60 +394,146 @@ const FriendsSidebar: React.FC = () => {
                                     <p className="text-xs text-text-muted py-1">No matches.</p>
                                 ) : (
                                     <ul className="flex flex-col gap-0.5">
-                                        {filteredFriends.map(f => (
-                                            <li key={f.id} className="group relative flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-bg-tertiary/30 transition-colors">
-                                                <Link
-                                                    to={`/u/${f.otherUser.username}`}
-                                                    onClick={closeSidebar}
-                                                    className="flex items-center gap-2.5 flex-1 min-w-0"
-                                                >
-                                                    <UserAvatar
-                                                        user={{ displayName: f.otherUser.displayName, username: f.otherUser.username, avatarUrl: f.otherUser.avatarUrl } as any}
-                                                        size={28}
-                                                    />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-xs text-text-primary truncate">{f.otherUser.displayName}</p>
-                                                        <p className="text-[10px] text-text-muted truncate">@{f.otherUser.username}</p>
-                                                    </div>
-                                                </Link>
-
-                                                <button
-                                                    onClick={(e) => {
+                                        {filteredFriends.map(f => {
+                                            const online = isOnline(f.otherUser.id);
+                                            const displayName = getDisplayName(f);
+                                            return (
+                                                <li
+                                                    key={f.id}
+                                                    className={`group relative flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-bg-tertiary/30 transition-colors ${!online ? 'opacity-60' : ''}`}
+                                                    onContextMenu={(e) => {
                                                         e.preventDefault();
-                                                        e.stopPropagation();
-                                                        setConfirmRemoveId(prev => (prev === f.id ? null : f.id));
+                                                        setContextMenu({
+                                                            x: e.clientX,
+                                                            y: e.clientY,
+                                                            friendId: f.otherUser.id,
+                                                            username: f.otherUser.username,
+                                                        });
                                                     }}
-                                                    title="Remove friend"
-                                                    className="w-6 h-6 rounded-full flex items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
                                                 >
-                                                    <UserMinus size={12} />
-                                                </button>
-
-                                                {confirmRemoveId === f.id && (
-                                                    <div className="absolute right-0 top-full mt-1 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-tertiary/90 backdrop-blur-sm border border-bg-tertiary/60">
-                                                        <button
-                                                            onClick={() => handleUnfriend(f.id)}
-                                                            className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setConfirmRemoveId(null)}
-                                                            className="text-[10px] font-mono px-2 py-0.5 rounded-md text-text-muted hover:text-text-primary transition-colors"
-                                                        >
-                                                            Cancel
-                                                        </button>
+                                                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                                        <div className="relative">
+                                                            <UserAvatar
+                                                                user={{ displayName: f.otherUser.displayName, username: f.otherUser.username, avatarUrl: f.otherUser.avatarUrl } as any}
+                                                                size={28}
+                                                            />
+                                                            <span
+                                                                className={`absolute -bottom-0.5  -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-bg-secondary ${online ? 'bg-green-500' : 'bg-red-500'}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0 cursor-pointer">
+                                                            <p className="text-xs text-text-primary truncate">{displayName}</p>
+                                                            <p className="text-[10px] text-text-muted truncate">@{f.otherUser.username}</p>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </li>
-                                        ))}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            setConfirmRemoveId(prev => (prev === f.id ? null : f.id));
+                                                        }}
+                                                        title="Remove friend"
+                                                        className="w-6 h-6 rounded-full flex cursor-pointer items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                                    >
+                                                        <UserMinus size={12} />
+                                                    </button>
+                                                    {confirmRemoveId === f.id && (
+                                                        <div className="absolute right-0 top-full mt-1 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-tertiary/90 backdrop-blur-sm border border-bg-tertiary/60">
+                                                            <button
+                                                                onClick={() => handleUnfriend(f.id)}
+                                                                className="text-[10px] font-mono cursor-pointer px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setConfirmRemoveId(null)}
+                                                                className="text-[10px] font-mono px-2 py-0.5 cursor-pointer rounded-md text-text-muted hover:text-text-primary transition-colors"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 )}
                             </section>
-
                         </div>
                     </motion.aside>
                 </>
+            )}
+
+            {/* ─── Context Menu ────────────────────────────────────────────────────── */}
+            {contextMenu && (
+                <div
+                    ref={contextMenuRef}
+                    className="fixed z-[60] min-w-[180px] bg-bg-secondary rounded-lg shadow-xl border border-bg-tertiary/60 py-1 overflow-hidden"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                    <button
+                        className="w-full px-4 py-2 text-xs cursor-pointer text-text-primary hover:bg-bg-tertiary/30 flex items-center gap-2 transition-colors"
+                        onClick={() => handleViewProfile(contextMenu.username)}
+                    >
+                        <User size={14} />
+                        View Profile
+                    </button>
+
+                    {/* Invite button - only enabled when in a room */}
+                    <button
+                        className={`w-full px-4 py-2  text-xs flex items-center gap-2 transition-colors ${currentRoom
+                            ? 'text-text-primary cursor-pointer hover:bg-bg-tertiary/30'
+                            : 'text-text-muted cursor-not-allowed'
+                            }`}
+                        onClick={() => currentRoom && handleInvite(contextMenu.friendId)}
+                        disabled={!currentRoom}
+                    >
+                        <UserPlus size={14} />
+                        {currentRoom ? 'Invite to Room' : 'Not in a room'}
+                    </button>
+
+                    <button
+                        className="w-full px-4 py-2 text-xs cursor-pointer text-text-primary hover:bg-bg-tertiary/30 flex items-center gap-2 transition-colors"
+                        onClick={() => openNicknameModal(contextMenu.friendId, contextMenu.username)}
+                    >
+                        <UserCog size={14} />
+                        Set Nickname
+                    </button>
+                </div>
+            )}
+
+            {/* ─── Nickname Modal ──────────────────────────────────────────────────── */}
+            {nicknameModal && (
+                <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center px-4">
+                    <div className="bg-bg-secondary rounded-xl p-6 max-w-sm w-full shadow-xl">
+                        <h3 className="text-sm font-semibold mb-2">Set Nickname</h3>
+                        <p className="text-xs text-text-muted mb-3">Nickname for @{nicknameModal.currentNickname}</p>
+                        <input
+                            ref={nicknameInputRef}
+                            type="text"
+                            className="w-full bg-bg-primary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-primary transition-colors"
+                            placeholder="Enter nickname"
+                            value={nicknameInput}
+                            onChange={(e) => setNicknameInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && saveNickname()}
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button
+                                className="px-3 py-1.5 rounded-lg text-sm text-text-muted hover:text-text-primary transition-colors"
+                                onClick={() => setNicknameModal(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="px-3 py-1.5 rounded-lg bg-accent-primary text-white text-sm font-semibold hover:brightness-105 transition-colors"
+                                onClick={saveNickname}
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </AnimatePresence>
     );

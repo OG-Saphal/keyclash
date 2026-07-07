@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { config } from './config.js';
 import { verifySupabaseToken } from './auth/verifySupabaseToken.js';
-import { registerRoomHandlers } from './socket/handlers.js';
+import { registerRoomHandlers, socketIdByUser } from './socket/handlers.js';
 import { startCleanupSweep } from './rooms/cleanupSweep.js';
 
 const app = express();
@@ -16,9 +16,6 @@ const io = new Server(httpServer, {
   cors: { origin: config.corsOrigins },
 });
 
-// ── Auth bridge: every socket connection must present a valid Supabase
-// access token in the handshake `auth` payload. Guests are rejected outright
-// here, matching the spec ("guests cannot open multiplayer at all").
 io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token as string | undefined;
   const identity = await verifySupabaseToken(token);
@@ -30,8 +27,6 @@ io.use(async (socket, next) => {
   const username = (socket.handshake.auth?.username as string) ?? identity.email ?? 'Player';
   const avatarUrl = (socket.handshake.auth?.avatarUrl as string | null) ?? null;
 
-  // Every event this socket ever emits is attributed to identity.userId from
-  // here on — never to socket.id, since socket IDs churn across reconnects.
   (socket.data as any).userId = identity.userId;
   (socket.data as any).username = username;
   (socket.data as any).avatarUrl = avatarUrl;
@@ -39,6 +34,19 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
+  // Store socket ID for invites & presence
+  socketIdByUser.set(socket.data.userId, socket.id);
+
+  // ─── Presence: broadcast online status ──
+  // 1. Send the full online list to the newly connected user
+  const onlineUserIds = Array.from(socketIdByUser.keys());
+  console.log('[presence] online users:', onlineUserIds);
+  socket.emit('presence:update', { onlineUsers: onlineUserIds });
+
+  // 2. Notify everyone else that this user is online
+  socket.broadcast.emit('user:connected', socket.data.userId);
+
+  // Register all room handlers
   registerRoomHandlers(io, socket as any);
 });
 

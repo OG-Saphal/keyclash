@@ -14,10 +14,15 @@ interface AuthedSocketData {
 
 type AuthedSocket = Socket & { data: AuthedSocketData };
 
+// ─── State ────────────────────────────────────────────────────────────────
 // Tracks which room each connected userId is currently in, so a raw
-// disconnect (tab close, network drop) knows where to apply grace period.
-// Keyed by userId — per the "identity by userId, never socketId" rule.
+// disconnect knows where to apply grace period.
 const activeRoomByUser = new Map<string, string>();
+
+// Maps userId → socketId for private messages (invites) & presence.
+export const socketIdByUser = new Map<string, string>();
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
 
 function broadcastRoom(io: Server, room: RoomState) {
   io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(room));
@@ -33,13 +38,17 @@ function err(socket: Socket, event: string, e: unknown) {
   socket.emit('error', { forEvent: event, code, message });
 }
 
+// ─── Handlers registration ───────────────────────────────────────────────
+
 export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
   const me = () => ({ userId: socket.data.userId, username: socket.data.username, avatarUrl: socket.data.avatarUrl });
 
+  // ── Room list ──
   socket.on('room:list_request', () => {
     socket.emit('room:list_updated', rooms.listPublicRooms());
   });
 
+  // ── Create room ──
   socket.on('room:create', (settingsInput, cb) => {
     try {
       const room = rooms.createRoom(me(), settingsInput);
@@ -55,6 +64,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Join room ──
   socket.on('room:join', ({ roomId, password }, cb) => {
     try {
       const { room, asSpectator } = rooms.joinRoom(roomId, me(), password);
@@ -71,6 +81,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Rejoin room ──
   // 🐛 FIX: a mid-race rejoin previously never received raceWords again —
   // race:words is only pushed once, right after countdown starts, via the
   // lobby:start handler below. A client reconnecting after that point got
@@ -105,8 +116,6 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     socket.leave(`room:${roomId}`);
     activeRoomByUser.delete(socket.data.userId);
     if (destroyed && room) {
-      // Any spectators left behind need to know the room is gone — they
-      // won't get another room:updated since the room no longer exists.
       io.to(`room:${roomId}`).emit('room:closed', { roomId, reason: 'no_active_players' });
       for (const p of room.players.values()) activeRoomByUser.delete(p.userId);
     } else if (room) {
@@ -115,6 +124,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     broadcastRoomList(io);
   });
 
+  // ── Lobby: ready ──
   socket.on('lobby:ready', ({ roomId, isReady }) => {
     try {
       const room = rooms.setReady(roomId, socket.data.userId, isReady);
@@ -124,6 +134,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Lobby: update settings ──
   socket.on('lobby:update_settings', ({ roomId, patch }) => {
     try {
       const room = rooms.updateSettings(roomId, socket.data.userId, patch);
@@ -134,6 +145,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Lobby: set color (HEAD feature) ──
   // 🆕 Part 1 — color selection. Any active player can set their own color;
   // rejected if another non-abandoned player already holds it.
   socket.on('lobby:set_color', ({ roomId, colorId }: { roomId: string; colorId: ColorId }, cb) => {
@@ -147,6 +159,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Lobby: kick ──
   socket.on('lobby:kick', ({ roomId, targetUserId }) => {
     try {
       const room = rooms.kickPlayer(roomId, socket.data.userId, targetUserId);
@@ -159,6 +172,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Lobby: transfer host ──
   socket.on('lobby:transfer_host', ({ roomId, targetUserId }) => {
     try {
       const room = rooms.transferHost(roomId, socket.data.userId, targetUserId);
@@ -168,13 +182,12 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Lobby: start race ──
   socket.on('lobby:start', ({ roomId }) => {
     try {
       const room = rooms.startRace(roomId, socket.data.userId);
-      broadcastRoom(io, room); // includes startTimestamp for the synced countdown
+      broadcastRoom(io, room);
       broadcastRoomList(io);
-      // Also push the locked race text explicitly once countdown completes,
-      // so slow-joining clients don't have to poll room:updated for it.
       setTimeout(() => {
         const r = roomStore.get(roomId);
         if (r) io.to(`room:${roomId}`).emit('race:words', { words: r.raceWords, startTimestamp: r.startTimestamp });
@@ -184,6 +197,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Race: progress (HEAD: includes completedChars) ──
   // Throttled client-side to ~250-500ms — server does not re-throttle, it
   // trusts the client to behave, but ignores updates for rooms not racing.
   // 🆕 Part 2 — completedChars added, additive only; this handler stays a
@@ -194,8 +208,6 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     rooms.recordProgress(roomId, socket.data.userId, { wordIndex, completedChars, elapsedMs, wpm, rawWpm, accuracy });
     const room = roomStore.get(roomId);
     if (room) {
-      // Broadcast just the progress delta, not the whole room DTO, to keep
-      // this frequent event cheap.
       socket.to(`room:${roomId}`).emit('race:progress_broadcast', {
         userId: socket.data.userId,
         wordIndex,
@@ -208,6 +220,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Race: finish ──
   socket.on('race:finish', (submission: FinalSubmission & { roomId: string }, cb) => {
     try {
       const room = rooms.getRoomOrThrow(submission.roomId);
@@ -239,6 +252,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // ── Return to lobby vote (HEAD feature) ──
   // 🆕 Part 5 — return-to-lobby vote toggle. Broadcasts room:updated as
   // usual; if the vote just completed the transition (status flips to
   // 'waiting' inside voteReturnToLobby), also re-broadcast the public room
@@ -255,18 +269,13 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
-  // ── Quick match ─────────────────────────────────────────────────────────
-
+  // ── Quick match ──
   socket.on('quickmatch:join', (settings) => {
     const entry: QueueEntry = { ...me(), settings, queuedAt: Date.now(), socketId: socket.id };
     quickMatchQueue.enqueue(entry);
     socket.emit('quickmatch:searching', { queuedAt: entry.queuedAt });
     tryMatch(io, entry.settings);
 
-    // ~15s timeout → broaden criteria (any mode/wordSet) or fall back to a
-    // bot opponent. Bot opponent is stubbed here — flagged as a follow-up in
-    // the README; wiring a real bot player into the race loop is nontrivial
-    // (it needs its own progress ticks) and out of scope for this MVP pass.
     setTimeout(() => {
       const stillQueued = quickMatchQueue.queuedFor(socket.data.userId) !== null;
       if (!stillQueued) return;
@@ -286,9 +295,39 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     socket.emit('quickmatch:cancelled');
   });
 
-  // ── Disconnect handling ─────────────────────────────────────────────────
+  // ─── Room invites ──────────────────────────────────────────────────────
+  socket.on('room:invite', ({ roomId, targetUserId }) => {
+    try {
+      const room = rooms.getRoomOrThrow(roomId);
+      if (!room.players.has(socket.data.userId)) {
+        throw new rooms.RoomError('NOT_IN_ROOM', 'You are not in this room.');
+      }
+      if (room.players.has(targetUserId)) {
+        // Target already in the room – ignore
+        return;
+      }
+      const targetSocketId = socketIdByUser.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('room:invited', {
+          roomId,
+          inviterUsername: socket.data.username,
+          roomName: room.settings.name,
+        });
+      }
+    } catch (e) {
+      err(socket, 'room:invite', e);
+    }
+  });
 
+  // ── Disconnect ──
   socket.on('disconnect', () => {
+    // Clean up socket mapping
+    socketIdByUser.delete(socket.data.userId);
+    console.log('[presence] user disconnected:', socket.data.userId);
+
+    // ─── Presence: notify others this user went offline ──
+    socket.broadcast.emit('user:disconnected', socket.data.userId);
+
     quickMatchQueue.remove(socket.data.userId);
     const roomId = activeRoomByUser.get(socket.data.userId);
     if (!roomId) return;
@@ -299,27 +338,26 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     if (!player) return;
 
     if (room.status === 'racing' || room.status === 'countdown') {
-      // Grace period — race continues, player marked disconnected, cleanup
-      // sweep expires them into "abandoned" if they don't reconnect in time.
       player.connection = 'disconnected';
       player.disconnectedAt = Date.now();
       broadcastRoom(io, room);
     } else {
-      // Lobby/finished disconnect: treat as a leave (frees the seat, may
-      // migrate host, may complete a pending return-to-lobby vote).
       const { room: remaining, destroyed } = rooms.leaveRoom(roomId, socket.data.userId);
-      activeRoomByUser.delete(socket.data.userId); // 🐛 FIX: was never cleared on disconnect
+      activeRoomByUser.delete(socket.data.userId);
       if (destroyed && remaining) {
         io.to(`room:${roomId}`).emit('room:closed', { roomId, reason: 'no_active_players' });
         for (const p of remaining.players.values()) activeRoomByUser.delete(p.userId);
       } else if (remaining) {
         broadcastRoom(io, remaining);
-        if (remaining.status === 'waiting') broadcastRoomList(io); // 🆕 vote-completion-by-disconnect case
+        // 🆕 vote-completion-by-disconnect case
+        if (remaining.status === 'waiting') broadcastRoomList(io);
       }
       broadcastRoomList(io);
     }
   });
 }
+
+// ─── Quick match helpers ────────────────────────────────────────────────
 
 function tryMatch(io: Server, settings: QueueEntry['settings']) {
   const pair = quickMatchQueue.tryPopPair(settings);
@@ -350,16 +388,9 @@ function createMatchRoom(io: Server, [a, b]: [QueueEntry, QueueEntry]) {
       s.emit('quickmatch:found', { room: rooms.toDTO(room) });
     }
   }
-  // Quick match skips the full lobby and goes straight to countdown, per spec.
-  // 🐛 FIX: the retry inside the catch block wasn't wrapped in its own
-  // try/catch — if canStart() STILL failed on the second attempt (e.g. quick
-  // match paired a lone tester with themselves during dev testing, leaving
-  // only one real active player in the room), startRace() threw again, and
-  // an uncaught exception inside a setTimeout callback can crash the whole
-  // Node process rather than just fail this one match. Now both attempts are
-  // guarded, and a genuine failure is logged + reported to the room instead
-  // of taking the server down.
+
   setTimeout(() => {
+    // Robust quick‑match start with fallback and error reporting (HEAD)
     try {
       const started = rooms.startRace(room.id, a.userId);
       io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
@@ -378,5 +409,5 @@ function createMatchRoom(io: Server, [a, b]: [QueueEntry, QueueEntry]) {
         });
       }
     }
-  }, 1500); // brief "Match Found!" flash
+  }, 1500);
 }

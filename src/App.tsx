@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
-import FriendsPage from './pages/FriendsPage';
 import FriendProfilePage from './pages/FriendProfilePage';
+import { useMultiplayerStore } from './store/useMultiplayerStore'; // 🆕 Part 5
 import FriendsSidebar from './components/friends/FriendsSidebar';
+import InviteNotification from './components/multiplayer/InviteNotification';
 import {
   HashRouter,
   Routes,
@@ -12,7 +13,6 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTypingStore } from './store/useTypingStore';
 import { useAuthStore } from './store/useAuthStore';
-import { useMultiplayerStore } from './store/useMultiplayerStore'; // 🆕 Part 5
 import { useTimer } from './hooks/useTimer';
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -167,27 +167,38 @@ const RoomStatusRouter: React.FC = () => {
 
 // ─── Root App with router ─────────────────────────────────────────────────────
 const App: React.FC = () => {
-  const initializeAuth = useAuthStore(s => s.initializeAuth);
-  // Bootstrap auth state once on mount
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const connectionStatus = useMultiplayerStore((s) => s.connectionStatus);
+  const connect = useMultiplayerStore((s) => s.connect);
+
   useEffect(() => {
-    initializeAuth();
-  }, [initializeAuth]);
+    // Restore auth session first
+    useAuthStore.getState().initializeAuth();
+
+    // Then connect multiplayer if authenticated
+    if (isAuthenticated && connectionStatus === 'disconnected') {
+      connect();
+    }
+  }, [isAuthenticated, connectionStatus, connect]);
+
   return (
     <HashRouter>
-      {/* Both components can coexist here */}
       <LeaveRoomConfirmModal />
       <FriendsSidebar />
-      <RoomStatusRouter /> {/* 🆕 Part 5 */}
+      <RoomStatusRouter />
+      <InviteNotification />
       <Routes>
-        {/* Auth routes (full-page, own layout) */}
+        {/* Auth routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/verify" element={<VerifyEmailPage />} />
-        {/* Authenticated routes (also full-page) */}
+
+        {/* Authenticated routes */}
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
-        {/* 🆕 Multiplayer routes */}
+
+        {/* Multiplayer routes */}
         <Route path="/multiplayer" element={<MultiplayerMenuPage />} />
         <Route path="/multiplayer/create" element={<CreateRoomPage />} />
         <Route path="/multiplayer/browse" element={<RoomBrowserPage />} />
@@ -195,9 +206,10 @@ const App: React.FC = () => {
         <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
         <Route path="/multiplayer/race" element={<RacePage />} />
         <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
-        {/* 🆕 Friend routes (from your friend) */}
-        <Route path="/friends" element={<FriendsPage />} />
+
+        {/* Friend routes */}
         <Route path="/u/:username" element={<FriendProfilePage />} />
+
         {/* Default: typing app */}
         <Route path="*" element={<TypingView />} />
       </Routes>

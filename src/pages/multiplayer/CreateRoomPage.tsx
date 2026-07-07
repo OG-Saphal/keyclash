@@ -1,27 +1,37 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Target, Clock, BookOpen, Settings as SettingsIcon, Users, Lock, Globe } from 'lucide-react';
+import { Pencil, Target, BookOpen, Users, Lock, Globe, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import Header from '../../components/Header';
-import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 import type { CreateRoomInput } from '../../types/multiplayer';
 
+// --- Switch (used for Punctuation & Numbers) ---
 const Switch: React.FC<{ checked: boolean; onChange: () => void }> = ({ checked, onChange }) => (
   <button
     type="button"
     onClick={onChange}
-    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${checked ? 'bg-accent' : 'bg-border'}`}
+    className={`relative w-11 h-6 rounded-full shrink-0 ${checked ? 'bg-accent-primary' : 'bg-bg-tertiary/60'
+      } shadow-inner transition-colors duration-200`}
   >
     <span
-      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : ''}`}
+      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md ${checked ? 'translate-x-5' : ''
+        } transition-transform duration-200`}
     />
   </button>
 );
 
-const SectionCard: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
-  <div className="bg-bg-primary/60 border border-border rounded-xl p-4 flex flex-col gap-3">
-    <div className="flex items-center gap-2 text-sm font-semibold text-text-muted">{icon}{title}</div>
+// --- Card ---
+const Card: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({
+  icon,
+  title,
+  children,
+}) => (
+  <div className="bg-bg-secondary/80 rounded-lg p-5 flex flex-col gap-4 shadow-sm">
+    <div className="flex items-center gap-2.5 text-xs font-semibold text-text-muted uppercase tracking-wider">
+      <span className="text-accent-primary">{icon}</span>
+      {title}
+    </div>
     {children}
   </div>
 );
@@ -58,140 +68,211 @@ const CreateRoomPage: React.FC = () => {
     else setFormError('Could not create room. Try again.');
   };
 
+  // Input with subtle purple border
+  const inputClass =
+    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm';
+
+  // Select with custom arrow – right padding leaves space for the icon
+  const selectClass =
+    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg pl-4 pr-10 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm appearance-none';
+
+  const min = 2;
+  const max = 10;
+  const fillPercent = ((form.maxPlayers - min) / (max - min)) * 100;
+
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
       <Header />
-      <ModeTabBar />
-      <main className="flex-1 flex items-center justify-center px-4 py-8">
-        <div className="max-w-lg w-full bg-bg-secondary border border-border rounded-2xl p-6 flex flex-col gap-4">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-accent" /> Create Room</h1>
 
-          <SectionCard icon={<Pencil className="w-4 h-4" />} title="Room Name">
-            <input
-              className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              maxLength={40}
-            />
-          </SectionCard>
-
-          <div className="grid grid-cols-2 gap-3">
-            <SectionCard icon={<Target className="w-4 h-4" />} title="Mode">
-              <select
-                className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-                value={form.mode}
-                onChange={(e) => setForm({ ...form, mode: e.target.value as 'time' | 'words' })}
-              >
-                <option value="time">Time</option>
-                <option value="words">Words</option>
-              </select>
-            </SectionCard>
-
-            {form.mode === 'time' ? (
-              <SectionCard icon={<Clock className="w-4 h-4" />} title="Duration">
-                <select
-                  className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-                  value={form.duration}
-                  onChange={(e) => setForm({ ...form, duration: Number(e.target.value) as any })}
-                >
-                  {[15, 30, 60, 120].map((d) => <option key={d} value={d}>{d} seconds</option>)}
-                </select>
-              </SectionCard>
-            ) : (
-              <SectionCard icon={<Target className="w-4 h-4" />} title="Word count">
-                <select
-                  className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-                  value={form.wordCount}
-                  onChange={(e) => setForm({ ...form, wordCount: Number(e.target.value) as any })}
-                >
-                  {[10, 25, 50, 100].map((w) => <option key={w} value={w}>{w} words</option>)}
-                </select>
-              </SectionCard>
-            )}
+      <main className="flex-1 flex items-center justify-center px-6 py-6 overflow-hidden">
+        <div className="w-full max-w-4xl bg-bg-secondary/60 rounded-xl p-8 shadow-md flex flex-col gap-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => navigate('/multiplayer')}
+              className="flex items-center gap-1.5 cursor-pointer text-text-muted hover:text-text-primary text-sm font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <h1 className="text-2xl font-bold flex items-center gap-2.5">
+              <Pencil className="w-6 h-6 text-accent-primary" /> Create Room
+            </h1>
+            <div className="w-20" />
           </div>
 
-          <SectionCard icon={<BookOpen className="w-4 h-4" />} title="Word Set">
-            <select
-              className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-              value={form.wordSet}
-              onChange={(e) => setForm({ ...form, wordSet: e.target.value as any })}
-            >
-              <option value="english200">English 200</option>
-              <option value="english1k">English 1k</option>
-              <option value="common">Common</option>
-            </select>
-          </SectionCard>
-
-          <SectionCard icon={<SettingsIcon className="w-4 h-4" />} title="Options">
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center justify-between text-sm text-text-primary">
-                Punctuation
-                <Switch checked={form.punctuation} onChange={() => setForm({ ...form, punctuation: !form.punctuation })} />
-              </label>
-              <label className="flex items-center justify-between text-sm text-text-primary">
-                Numbers
-                <Switch checked={form.numbers} onChange={() => setForm({ ...form, numbers: !form.numbers })} />
-              </label>
-            </div>
-          </SectionCard>
-
-          <SectionCard icon={<Users className="w-4 h-4" />} title={`Max Players: ${form.maxPlayers}`}>
-            <input
-              type="range"
-              min={2}
-              max={10}
-              value={form.maxPlayers}
-              onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })}
-              className="accent-current"
-              style={{ accentColor: 'var(--color-accent, #6366f1)' }}
-            />
-            <div className="flex justify-between text-xs text-text-muted">
-              <span>2</span><span>10</span>
-            </div>
-          </SectionCard>
-
-          <SectionCard icon={form.visibility === 'public' ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />} title="Visibility">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, visibility: 'public' })}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  form.visibility === 'public' ? 'bg-accent/15 border-accent text-accent' : 'border-border text-text-muted'
-                }`}
-              >
-                <Globe className="w-4 h-4" /> Public
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, visibility: 'private' })}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  form.visibility === 'private' ? 'bg-accent/15 border-accent text-accent' : 'border-border text-text-muted'
-                }`}
-              >
-                <Lock className="w-4 h-4" /> Private
-              </button>
-            </div>
-
-            {form.visibility === 'private' && (
+          {/* 2×2 grid */}
+          <div className="grid grid-cols-2 gap-5">
+            {/* Card 1: Room Name */}
+            <Card icon={<Pencil className="w-4 h-4" />} title="Room Name">
               <input
-                type="password"
-                placeholder="Room password"
-                className="bg-bg-secondary border border-border rounded-lg px-3 py-2 mt-1"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className={inputClass}
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                maxLength={40}
+                placeholder="Enter room name"
               />
-            )}
-          </SectionCard>
+            </Card>
 
-          {formError && <p className="text-red-400 text-sm">{formError}</p>}
+            {/* Card 2: Mode & Duration */}
+            <Card icon={<Target className="w-4 h-4" />} title="Mode & Duration">
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <select
+                    className={selectClass}
+                    value={form.mode}
+                    onChange={(e) => setForm({ ...form, mode: e.target.value as 'time' | 'words' })}
+                  >
+                    <option value="time">Time</option>
+                    <option value="words">Words</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                </div>
 
-          <button
-            className="mt-1 px-4 py-3 rounded-xl bg-gradient-to-r from-accent to-accent/80 text-bg-primary font-bold tracking-wide disabled:opacity-50"
-            disabled={submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? 'Creating…' : 'CREATE & GO TO LOBBY'}
-          </button>
+                {form.mode === 'time' ? (
+                  <div className="relative flex-1">
+                    <select
+                      className={selectClass}
+                      value={form.duration}
+                      onChange={(e) => setForm({ ...form, duration: Number(e.target.value) as any })}
+                    >
+                      {[15, 30, 60, 120].map((d) => (
+                        <option key={d} value={d}>{d}s</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                  </div>
+                ) : (
+                  <div className="relative flex-1">
+                    <select
+                      className={selectClass}
+                      value={form.wordCount}
+                      onChange={(e) => setForm({ ...form, wordCount: Number(e.target.value) as any })}
+                    >
+                      {[10, 25, 50, 100].map((w) => (
+                        <option key={w} value={w}>{w}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Card 3: Word Set & Options */}
+            <Card icon={<BookOpen className="w-4 h-4" />} title="Word Set & Options">
+              <div className="relative">
+                <select
+                  className={selectClass}
+                  value={form.wordSet}
+                  onChange={(e) => setForm({ ...form, wordSet: e.target.value as any })}
+                >
+                  <option value="english200">English 200</option>
+                  <option value="english1k">English 1k</option>
+                  <option value="common">Common</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+              </div>
+
+              {/* Options switches */}
+              <div className="flex flex-col gap-2 mt-0.5">
+                <label className="flex items-center justify-between cursor-pointer text-sm text-text-primary">
+                  Punctuation
+                  <Switch
+                    checked={form.punctuation}
+                    onChange={() => setForm({ ...form, punctuation: !form.punctuation })}
+                  />
+                </label>
+                <label className="flex items-center justify-between cursor-pointer text-sm text-text-primary">
+                  Numbers
+                  <Switch
+                    checked={form.numbers}
+                    onChange={() => setForm({ ...form, numbers: !form.numbers })}
+                  />
+                </label>
+              </div>
+            </Card>
+
+            <Card icon={<Users className="w-4 h-4" />} title={`Players: ${form.maxPlayers}`}>
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1 h-4 flex items-center">
+                  <div className="absolute inset-0 h-1.5 bg-bg-tertiary/60 rounded-full top-1/2 -translate-y-1/2 overflow-hidden">
+                    <div
+                      className="h-full bg-accent-primary rounded-full transition-all duration-150 ease-out"
+                      style={{ width: `${fillPercent}%` }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    value={form.maxPlayers}
+                    onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })}
+                    className="relative w-full h-4 bg-transparent appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-accent-primary [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white"
+                    style={{ zIndex: 1 }}
+                  />
+                </div>
+                <span className="text-sm font-bold text-accent-primary min-w-[1.8rem] text-center">
+                  {form.maxPlayers}
+                </span>
+              </div>
+
+              {form.visibility === 'private' && (
+                <input
+                  type="password"
+                  placeholder="Enter password"
+                  className={inputClass}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+              )}
+
+              <div className="flex gap-3 mt-auto">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, visibility: 'public', password: '' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${form.visibility === 'public'
+                    ? 'bg-accent-primary/20 cursor-pointer text-accent-primary shadow-sm'
+                    : 'bg-bg-primary/40 text-text-muted cursor-pointer hover:bg-bg-primary/60'
+                    }`}
+                >
+                  <Globe className="w-4 h-4" /> Public
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, visibility: 'private' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${form.visibility === 'private'
+                    ? 'bg-accent-primary/20 cursor-pointer text-accent-primary shadow-sm'
+                    : 'bg-bg-primary/40 text-text-muted cursor-pointer hover:bg-bg-primary/60'
+                    }`}
+                >
+                  <Lock className="w-4 h-4" /> Private
+                </button>
+              </div>
+            </Card>
+          </div>
+
+          {formError && (
+            <div className="bg-red-500/10 border border-red-400/20 text-red-400 rounded-lg px-4 py-2.5 text-sm">
+              ⚠ {formError}
+            </div>
+          )}
+
+          <div className="flex justify-center mt-4">
+            <button
+              className="px-8 py-2.5 rounded-lg cursor-pointer bg-accent-primary text-white font-bold text-base shadow-md hover:shadow-lg hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+              disabled={submitting}
+              onClick={handleSubmit}
+            >
+              {submitting ? (
+                <span className="flex items-center gap-3 text-[13px]">
+                  <span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                  Creating…
+                </span>
+              ) : (
+                'Create Room'
+              )}
+            </button>
+          </div>
         </div>
       </main>
       <Footer />

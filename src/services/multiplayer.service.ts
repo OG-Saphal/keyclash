@@ -1,6 +1,8 @@
 import { io, type Socket } from 'socket.io-client';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/useAuthStore';
+import { usePresenceStore } from '../store/usePresenceStore';
+import { useInviteStore } from '../store/useInviteStore';
 import type {
   RoomStateDTO,
   RoomListEntry,
@@ -14,12 +16,6 @@ const SERVER_URL = import.meta.env.VITE_MULTIPLAYER_SERVER_URL as string;
 
 let socket: Socket | null = null;
 
-/**
- * Connects the multiplayer socket, authenticated with the CURRENT Supabase
- * session's access token (handshake auth payload — see server's
- * src/index.ts io.use()). Guests should never reach this: gate the call at
- * the UI layer (Multiplayer menu shows a login modal instead).
- */
 export async function connectMultiplayerSocket(): Promise<Socket> {
   if (socket?.connected) return socket;
 
@@ -27,13 +23,6 @@ export async function connectMultiplayerSocket(): Promise<Socket> {
   const session = data.session;
   if (!session) throw new Error('Must be logged in to use multiplayer.');
 
-  // 🐛 FIX: avatarUrl was being read from session.user.user_metadata, which
-  // never has it — KeyClash stores avatar_url in the `profiles` table, and
-  // useAuthStore.user is already the mapped profile (see auth.service.ts
-  // rowToProfile). Reading from user_metadata meant every player's avatar
-  // silently came through as null. Reading from the auth store's profile
-  // fixes it, and also gives a consistent username (falls back the same way
-  // the rest of the app does).
   const profile = useAuthStore.getState().user;
 
   socket = io(SERVER_URL, {
@@ -42,11 +31,33 @@ export async function connectMultiplayerSocket(): Promise<Socket> {
       username: profile?.username ?? profile?.displayName ?? session.user.email ?? 'Player',
       avatarUrl: profile?.avatarUrl ?? null,
     },
-    // Reconnect automatically on network blips; room:rejoin handles resuming
-    // room state once we're back — see useMultiplayerStore.
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1000,
+  });
+
+  // ─── Presence listeners ──────────────────────────────────────────────────
+  socket.on('presence:update', (data: { onlineUsers: string[] }) => {
+    usePresenceStore.getState().setOnlineUsers(data.onlineUsers);
+  });
+
+  socket.on('user:connected', (userId: string) => {
+    usePresenceStore.getState().addOnlineUser(userId);
+  });
+
+  socket.on('user:disconnected', (userId: string) => {
+    usePresenceStore.getState().removeOnlineUser(userId);
+  });
+
+  // ─── Room invite listener ──────────────────────────────────────────────
+  socket.on('room:invited', (data) => {
+    useInviteStore.getState().setInvite(data);
+  });
+
+  // ─── Reconnection: server will push fresh presence and room state ──────
+  socket.on('connect', () => {
+    // The server will send a new presence:update and room:updated if needed.
+    // No need to re‑register listeners here.
   });
 
   return new Promise((resolve, reject) => {
@@ -56,7 +67,14 @@ export async function connectMultiplayerSocket(): Promise<Socket> {
 }
 
 export function disconnectMultiplayerSocket() {
-  socket?.disconnect();
+  if (socket) {
+    socket.off('presence:update');
+    socket.off('user:connected');
+    socket.off('user:disconnected');
+    socket.off('room:invited');
+    socket.off('connect');
+    socket.disconnect();
+  }
   socket = null;
 }
 
@@ -65,10 +83,12 @@ export function getSocket(): Socket {
   return socket;
 }
 
+// ─── Room invites ─────────────────────────────────────────────────────────────
+export function inviteToRoom(roomId: string, targetUserId: string) {
+  getSocket().emit('room:invite', { roomId, targetUserId });
+}
+
 // ─── Typed emit helpers ─────────────────────────────────────────────────────
-// Thin, typed wrappers so the store/components never touch raw socket.emit
-// strings directly (keeps the wire protocol centralized in one file, per the
-// existing <domain>.service.ts convention).
 
 export function requestRoomList() {
   getSocket().emit('room:list_request');
@@ -150,11 +170,7 @@ export function voteReturnToLobby(roomId: string, optIn: boolean): Promise<{ ok:
 }
 
 // ─── Event subscription helpers ─────────────────────────────────────────────
-// The store calls these once, on socket connect, to wire server pushes into
-// Zustand state. Exported as named functions (rather than the store
-// importing `socket` directly) so the raw Socket instance stays encapsulated
-// in this file.
-
+// These are used by the store to register callbacks for server events.
 export function onRoomUpdated(cb: (room: RoomStateDTO) => void) {
   getSocket().on('room:updated', cb);
 }
@@ -191,4 +207,7 @@ export function onQuickMatchFound(cb: (payload: { room: RoomStateDTO }) => void)
 }
 export function onServerError(cb: (payload: ServerErrorPayload) => void) {
   getSocket().on('error', cb);
+}
+export function onRoomInvited(cb: (payload: { roomId: string; inviterUsername: string; roomName: string }) => void) {
+  getSocket().on('room:invited', cb);
 }

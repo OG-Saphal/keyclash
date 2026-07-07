@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Globe, Lock, Crown, RefreshCw, PlusCircle } from 'lucide-react';
+import { Search, Globe, Lock, Crown, RefreshCw, PlusCircle, ChevronDown, ArrowLeft } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import Header from '../../components/Header';
-import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 import type { RoomListEntry } from '../../types/multiplayer';
 
@@ -31,8 +30,6 @@ const RoomBrowserPage: React.FC = () => {
 
   useEffect(() => {
     refreshRoomList();
-    // Live-updating via room:list_updated diff-broadcasts — this interval is
-    // just a friendly "last synced Ns ago" indicator, not a poll.
     const t = setInterval(() => setLastRefreshed((prev) => prev), 1000);
     return () => clearInterval(t);
   }, [refreshRoomList]);
@@ -83,131 +80,187 @@ const RoomBrowserPage: React.FC = () => {
     else setJoinError('Room code not found.');
   };
 
+  // Input class – with subtle purple border
+  const inputClass =
+    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg px-4 py-2 text-sm text-text-primary placeholder-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm';
+
+  // Select class – with custom arrow spacing
+  const selectClass =
+    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg pl-4 pr-10 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm appearance-none';
+
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
       <Header />
-      <ModeTabBar />
-      <main className="flex-1 px-4 py-8 max-w-4xl mx-auto w-full flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Search className="w-5 h-5 text-accent" /> Join a Room</h1>
-          <span className="flex items-center gap-1.5 text-xs text-text-muted">
-            <RefreshCw className="w-3 h-3" /> synced {secondsAgo}s ago
-          </span>
-        </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              className="bg-bg-secondary border border-border rounded-lg pl-9 pr-3 py-2 w-full"
-              placeholder="Search by room or host…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <select
-            className="bg-bg-secondary border border-border rounded-lg px-3 py-2"
-            value={modeFilter}
-            onChange={(e) => setModeFilter(e.target.value as any)}
-          >
-            <option value="all">All modes</option>
-            <option value="time">Time</option>
-            <option value="words">Words</option>
-          </select>
-          <label className="flex items-center gap-2 text-sm text-text-muted">
-            <input type="checkbox" checked={hideFullOrRacing} onChange={(e) => setHideFullOrRacing(e.target.checked)} />
-            Hide full/racing
-          </label>
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            className="bg-bg-secondary border border-border rounded-lg px-3 py-2 w-32 uppercase font-mono tracking-widest"
-            placeholder="CODE"
-            value={codeEntry}
-            onChange={(e) => setCodeEntry(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleEnterCode()}
-          />
-          <button className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:border-accent/60" onClick={handleEnterCode}>
-            Join by Code
-          </button>
-        </div>
-
-        {joinError && <p className="text-red-400 text-sm">{joinError}</p>}
-
-        {filtered.length === 0 ? (
-          <div className="bg-bg-secondary border border-border rounded-2xl p-10 text-center text-text-muted flex flex-col items-center gap-4">
-            <Search className="w-8 h-8 opacity-40" />
-            <p>No public rooms match right now.</p>
+      <main className="flex-1 flex items-center justify-center px-4 py-4 overflow-hidden">
+        <div className="w-full max-w-4xl bg-bg-secondary/60 rounded-xl p-6 shadow-md flex flex-col h-full max-h-full">
+          {/* Header with Back button */}
+          <div className="flex items-center justify-between mb-4">
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-bg-primary font-semibold"
-              onClick={() => navigate('/multiplayer/create')}
+              onClick={() => navigate('/multiplayer')}
+              className="flex items-center gap-1.5 cursor-pointer text-text-muted hover:text-text-primary text-sm font-medium"
             >
-              <PlusCircle className="w-4 h-4" /> Start your own
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <h1 className="text-2xl font-bold flex items-center gap-2.5">
+              <Search className="w-5 h-5 text-accent-primary" /> Join a Room
+            </h1>
+            <span className="text-xs text-text-muted flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3" /> {secondsAgo}s ago
+            </span>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className={inputClass + ' pl-9'}
+                placeholder="Search by room or host…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Mode filter dropdown with custom arrow */}
+            <div className="relative w-auto min-w-[120px]">
+              <select
+                className={selectClass}
+                value={modeFilter}
+                onChange={(e) => setModeFilter(e.target.value as any)}
+              >
+                <option value="all">All modes</option>
+                <option value="time">Time</option>
+                <option value="words">Words</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideFullOrRacing}
+                onChange={(e) => setHideFullOrRacing(e.target.checked)}
+                className="accent-accent-primary w-4 h-4 rounded"
+              />
+              Hide full/racing
+            </label>
+          </div>
+
+          {/* Quick join */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Quick join</span>
+            <input
+              className={inputClass + ' w-40 uppercase font-mono tracking-widest'}
+              placeholder="CODE"
+              value={codeEntry}
+              onChange={(e) => setCodeEntry(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleEnterCode()}
+            />
+            <button
+              className="px-4 py-1.5 rounded-lg bg-accent-primary text-white font-medium shadow-sm hover:brightness-105"
+              onClick={handleEnterCode}
+            >
+              Join
             </button>
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {filtered.map((r) => {
-              const isFull = r.playerCount >= r.maxPlayers;
-              const isRacing = r.status !== 'waiting';
-              const actionLabel = r.visibility === 'private' ? 'Enter Password' : isFull || isRacing ? 'Spectate' : 'Join';
-              const status = STATUS_STYLES[r.status];
-              return (
-                <div
-                  key={r.id}
-                  className="bg-bg-secondary border border-border rounded-xl px-4 py-3 flex items-center gap-4 hover:border-accent/40 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{r.name}</p>
-                    <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5">
-                      <Crown className="w-3 h-3 text-amber-400" /> {r.hostUsername}
-                    </p>
-                  </div>
-                  <span className="text-xs text-text-muted w-16 capitalize hidden sm:block">{r.mode}</span>
-                  <span className="text-xs text-text-muted w-16 hidden sm:block">{r.playerCount}/{r.maxPlayers}</span>
-                  <span className={`text-xs flex items-center gap-1.5 w-20 ${status.text}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} /> {status.label}
-                  </span>
-                  <span className="text-xs text-text-muted w-8 flex justify-center" title={r.visibility}>
-                    {r.visibility === 'public' ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                  </span>
+
+          {joinError && (
+            <div className="bg-red-500/10 text-red-400 rounded-lg px-4 py-2 text-sm mb-4">
+              ⚠ {joinError}
+            </div>
+          )}
+
+          {/* Room list – scrollable */}
+          <div className="flex-1 overflow-y-auto pr-1 -mr-1 flex flex-col">
+            {filtered.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-full flex flex-col items-center justify-center gap-4 p-10">
+                  <Search className="w-10 h-10 opacity-30" />
+                  <p className="text-base text-text-muted">No public rooms match your criteria.</p>
                   <button
-                    className="px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-accent hover:text-bg-primary hover:border-accent transition-colors shrink-0"
-                    onClick={() => handleJoin(r.id, r.visibility === 'private')}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent-primary text-white font-semibold shadow-sm hover:brightness-105"
+                    onClick={() => navigate('/multiplayer/create')}
                   >
-                    {actionLabel}
+                    <PlusCircle className="w-4 h-4" /> Create your own
                   </button>
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        {pendingPasswordRoomId && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-4 z-50">
-            <div className="bg-bg-secondary border border-border rounded-2xl p-6 max-w-sm w-full flex flex-col gap-3">
-              <h2 className="font-semibold flex items-center gap-2"><Lock className="w-4 h-4" /> Room password</h2>
-              <input
-                type="password"
-                autoFocus
-                className="bg-bg-primary border border-border rounded-lg px-3 py-2"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-              />
-              <div className="flex gap-2 justify-end">
-                <button className="px-3 py-2 rounded-lg border border-border" onClick={() => setPendingPasswordRoomId(null)}>
-                  Cancel
-                </button>
-                <button className="px-3 py-2 rounded-lg bg-accent text-bg-primary font-semibold" onClick={handlePasswordSubmit}>
-                  Join
-                </button>
               </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {filtered.map((r) => {
+                  const isFull = r.playerCount >= r.maxPlayers;
+                  const isRacing = r.status !== 'waiting';
+                  const actionLabel = r.visibility === 'private' ? 'Enter Password' : isFull || isRacing ? 'Spectate' : 'Join';
+                  const status = STATUS_STYLES[r.status];
+                  return (
+                    <div
+                      key={r.id}
+                      className="bg-bg-secondary/80 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{r.name}</p>
+                        <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5">
+                          <Crown className="w-3 h-3 text-amber-400" /> {r.hostUsername}
+                        </p>
+                      </div>
+                      <span className="text-xs text-text-muted w-16 capitalize hidden sm:block">{r.mode}</span>
+                      <span className="text-xs text-text-muted w-14 hidden sm:block">{r.playerCount}/{r.maxPlayers}</span>
+                      <span className={`text-xs flex items-center gap-1.5 w-20 ${status.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} /> {status.label}
+                      </span>
+                      <span className="text-text-muted w-8 flex justify-center" title={r.visibility}>
+                        {r.visibility === 'public' ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                      </span>
+                      <button
+                        className="px-3.5 py-1.5 rounded-lg bg-accent-primary/10 text-accent-primary font-medium hover:bg-accent-primary/20 shadow-sm"
+                        onClick={() => handleJoin(r.id, r.visibility === 'private')}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Password modal */}
+      {pendingPasswordRoomId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-4 z-50">
+          <div className="bg-bg-secondary/90 backdrop-blur-sm rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <h2 className="font-semibold flex items-center gap-2 text-lg">
+              <Lock className="w-5 h-5 text-accent-primary" /> Room password
+            </h2>
+            <input
+              type="password"
+              autoFocus
+              className={inputClass + ' mt-3'}
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              placeholder="Enter password"
+            />
+            <div className="flex gap-2 justify-end mt-4">
+              <button
+                className="px-4 py-2 rounded-lg bg-bg-primary/40 text-text-muted hover:bg-bg-primary/60"
+                onClick={() => setPendingPasswordRoomId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg bg-accent-primary text-white font-semibold shadow-sm hover:brightness-105"
+                onClick={handlePasswordSubmit}
+              >
+                Join
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
+
       <Footer />
     </div>
   );
