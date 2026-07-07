@@ -1,5 +1,7 @@
 // Mirrors the frontend's src/types/index.ts config unions so the two sides
 // never disagree on what a valid mode/wordSet/duration is.
+import type { ColorId } from './playerColors.js';
+
 export type TestMode = 'time' | 'words';
 export type WordSet = 'english200' | 'english1k' | 'common';
 
@@ -23,6 +25,16 @@ export interface RoomSettings {
 
 export interface PlayerProgressSnapshot {
   wordIndex: number;
+  // 🆕 Part 2 — absolute character offset into the race text (correct +
+  // incorrect chars typed so far, i.e. "how far along the paragraph is this
+  // player's caret"), NOT just a count of correct chars. See roomManager.ts
+  // / useMultiplayerStore.ts comments for why this deviates from the literal
+  // "completedChars = correct chars" wording in the original task write-up:
+  // a typo still occupies a position in the text, so caret placement needs
+  // the client's forward-typed offset, not the anti-cheat-relevant correct
+  // count (which is a separate, already-existing concern handled by
+  // totalCorrectChars/totalIncorrectChars in the typing engine + metrics.ts).
+  completedChars: number;
   elapsedMs: number;
   wpm: number;
   rawWpm: number;
@@ -34,6 +46,7 @@ export interface RoomPlayer {
   userId: string;
   username: string;
   avatarUrl: string | null;
+  colorId: ColorId; // 🆕 Part 1 — server-assigned, never accepted from the client without validation
   isHost: boolean;
   isReady: boolean;
   isSpectator: boolean;
@@ -62,6 +75,9 @@ export interface RoomState {
   startTimestamp: number | null; // server clock, ms — used for synced countdown
   createdAt: number;
   lastActivityAt: number;
+  // 🆕 Part 5 — userIds of active players who've opted in to a rematch.
+  // Cleared whenever the room transitions back to 'waiting'.
+  returnToLobbyVotes: Set<string>;
 }
 
 /** Shape sent to clients — Maps don't serialize, password hash never leaves the server. */
@@ -73,6 +89,7 @@ export interface RoomStateDTO {
   players: Omit<RoomPlayer, 'socketId'>[];
   startTimestamp: number | null;
   createdAt: number;
+  returnToLobbyVotes: string[]; // 🆕 Part 5 — userIds; client derives "X of Y" from active player count
 }
 
 /** Row shown in the public Room Browser list — deliberately minimal. */

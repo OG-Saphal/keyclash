@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Crown, Copy, Check, UserPlus, LogOut, Flag, Users } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
+import { resolvePlayerColor } from '../../data/playerColors'; // 🆕 Part 1
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 import PlayerAvatar from '../../components/multiplayer/PlayerAvatar';
+import PlayerColorSwatches from '../../components/multiplayer/PlayerColorSwatches'; // 🆕 Part 1
 import RoomSettingsPanel from '../../components/multiplayer/RoomSettingsPanel';
 
 const LobbyPage: React.FC = () => {
@@ -18,17 +21,16 @@ const LobbyPage: React.FC = () => {
   const startRaceAction = useMultiplayerStore((s) => s.startRace);
   const leaveRoom = useMultiplayerStore((s) => s.leaveRoom);
   const currentUser = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme); // 🆕 Part 1
   const navigate = useNavigate();
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
 
-  useEffect(() => {
-    if (room?.status === 'countdown' || room?.status === 'racing') {
-      navigate('/multiplayer/race');
-    }
-    if (!room) {
-      navigate('/multiplayer');
-    }
-  }, [room?.status, room, navigate]);
+  // 🆕 REMOVED: the countdown/racing -> /multiplayer/race and !room ->
+  // /multiplayer navigation effects that used to live here. Both are now
+  // handled by a single global <RoomStatusRouter/> mounted in App.tsx, so
+  // every status-driven redirect (this page's, plus the new finished ->
+  // waiting redirect added for Part 5) comes from one place instead of
+  // being split across pages. See App.tsx for the consolidated logic.
 
   if (!room || !currentUser) return null;
 
@@ -97,41 +99,63 @@ const LobbyPage: React.FC = () => {
           </div>
           <div className="divide-y divide-border">
             <AnimatePresence initial={false}>
-              {activePlayers.map((p) => (
-                <motion.div
-                  key={p.userId}
-                  layout
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} ring={p.isHost} />
-                    <span className="font-medium truncate">{p.username}</span>
-                    {p.isHost && <Crown className="w-4 h-4 text-amber-400 shrink-0" />}
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        p.isHost || p.isReady ? 'bg-green-500/15 text-green-400' : 'bg-bg-primary text-text-muted'
-                      }`}
-                    >
-                      {p.isHost ? 'Host' : p.isReady ? '● Ready' : 'Not ready'}
-                    </span>
-                    {isHost && !p.isHost && (
-                      <div className="flex items-center gap-2">
-                        <button className="text-xs underline text-text-muted hover:text-text-primary" onClick={() => transferHost(p.userId)}>
-                          Make host
-                        </button>
-                        <button className="text-xs underline text-red-400/80 hover:text-red-400" onClick={() => kickPlayer(p.userId)}>
-                          Kick
-                        </button>
+              {activePlayers.map((p) => {
+                const isMe = p.userId === currentUser.id; // 🆕 Part 1
+                return (
+                  <motion.div
+                    key={p.userId}
+                    layout
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex flex-col gap-2 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} ring={p.isHost} />
+                        {/* 🆕 Part 1 — static color dot on every row, so a
+                            player's assigned color is always visible even
+                            when it's not their own editable row. */}
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: resolvePlayerColor(p.colorId, theme) }}
+                          title={isMe ? undefined : `${p.username}'s color`}
+                        />
+                        <span className="font-medium truncate">{p.username}</span>
+                        {p.isHost && <Crown className="w-4 h-4 text-amber-400 shrink-0" />}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            p.isHost || p.isReady ? 'bg-green-500/15 text-green-400' : 'bg-bg-primary text-text-muted'
+                          }`}
+                        >
+                          {p.isHost ? 'Host' : p.isReady ? '● Ready' : 'Not ready'}
+                        </span>
+                        {isHost && !p.isHost && (
+                          <div className="flex items-center gap-2">
+                            <button className="text-xs underline text-text-muted hover:text-text-primary" onClick={() => transferHost(p.userId)}>
+                              Make host
+                            </button>
+                            <button className="text-xs underline text-red-400/80 hover:text-red-400" onClick={() => kickPlayer(p.userId)}>
+                              Kick
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 🆕 Part 1 — the interactive swatch picker only ever
+                        renders on the LOCAL player's own row; you can't set
+                        someone else's color. */}
+                    {isMe && (
+                      <div className="pl-12">
+                        <PlayerColorSwatches players={activePlayers} myColorId={p.colorId} />
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
 
             {Array.from({ length: emptySlots }).map((_, i) => (

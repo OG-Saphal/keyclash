@@ -4,6 +4,7 @@ import { roomStore } from '../rooms/roomStore.js';
 import { quickMatchQueue, type QueueEntry } from '../quickmatch/queue.js';
 import { recomputeFinalStats, type FinalSubmission } from '../game/metrics.js';
 import type { RoomState } from '../rooms/types.js';
+import type { ColorId } from '../rooms/playerColors.js';
 
 interface AuthedSocketData {
   userId: string;
@@ -70,6 +71,14 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     }
   });
 
+  // 🐛 FIX: a mid-race rejoin previously never received raceWords again —
+  // race:words is only pushed once, right after countdown starts, via the
+  // lobby:start handler below. A client reconnecting after that point got
+  // room:updated (which carries startTimestamp but NOT raceWords) and
+  // nothing else, so their WordDisplay had no text to render and would
+  // silently desync from everyone else. Re-send the cached words/timestamp
+  // directly to the rejoining socket (not a room broadcast — only this
+  // client needs it) whenever the room is still mid-race.
   socket.on('room:rejoin', ({ roomId }, cb) => {
     try {
       const room = rooms.getRoomOrThrow(roomId);
@@ -82,6 +91,9 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       activeRoomByUser.set(socket.data.userId, room.id);
       cb?.({ ok: true, room: rooms.toDTO(room) });
       broadcastRoom(io, room);
+      if (room.raceWords && (room.status === 'racing' || room.status === 'countdown')) {
+        socket.emit('race:words', { words: room.raceWords, startTimestamp: room.startTimestamp });
+      }
     } catch (e) {
       err(socket, 'room:rejoin', e);
       cb?.({ ok: false });
@@ -119,6 +131,19 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       broadcastRoomList(io);
     } catch (e) {
       err(socket, 'lobby:update_settings', e);
+    }
+  });
+
+  // 🆕 Part 1 — color selection. Any active player can set their own color;
+  // rejected if another non-abandoned player already holds it.
+  socket.on('lobby:set_color', ({ roomId, colorId }: { roomId: string; colorId: ColorId }, cb) => {
+    try {
+      const room = rooms.setPlayerColor(roomId, socket.data.userId, colorId);
+      cb?.({ ok: true });
+      broadcastRoom(io, room);
+    } catch (e) {
+      err(socket, 'lobby:set_color', e);
+      cb?.({ ok: false, error: e instanceof rooms.RoomError ? e.code : 'UNKNOWN' });
     }
   });
 
@@ -161,8 +186,12 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
 
   // Throttled client-side to ~250-500ms — server does not re-throttle, it
   // trusts the client to behave, but ignores updates for rooms not racing.
-  socket.on('race:progress', ({ roomId, wordIndex, elapsedMs, wpm, rawWpm, accuracy }) => {
-    rooms.recordProgress(roomId, socket.data.userId, { wordIndex, elapsedMs, wpm, rawWpm, accuracy });
+  // 🆕 Part 2 — completedChars added, additive only; this handler stays a
+  // pure relay for the broadcast half (confirmed no other logic changes
+  // needed here — recordProgress is the only place the payload is consumed
+  // server-side, purely for display, never for scoring).
+  socket.on('race:progress', ({ roomId, wordIndex, completedChars, elapsedMs, wpm, rawWpm, accuracy }) => {
+    rooms.recordProgress(roomId, socket.data.userId, { wordIndex, completedChars, elapsedMs, wpm, rawWpm, accuracy });
     const room = roomStore.get(roomId);
     if (room) {
       // Broadcast just the progress delta, not the whole room DTO, to keep
@@ -170,6 +199,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       socket.to(`room:${roomId}`).emit('race:progress_broadcast', {
         userId: socket.data.userId,
         wordIndex,
+        completedChars,
         elapsedMs,
         wpm,
         rawWpm,
@@ -206,6 +236,22 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     } catch (e) {
       err(socket, 'race:finish', e);
       cb?.({ ok: false });
+    }
+  });
+
+  // 🆕 Part 5 — return-to-lobby vote toggle. Broadcasts room:updated as
+  // usual; if the vote just completed the transition (status flips to
+  // 'waiting' inside voteReturnToLobby), also re-broadcast the public room
+  // list so the room reappears correctly in RoomBrowserPage.
+  socket.on('room:return_to_lobby_vote', ({ roomId, optIn }: { roomId: string; optIn: boolean }, cb) => {
+    try {
+      const room = rooms.voteReturnToLobby(roomId, socket.data.userId, optIn);
+      cb?.({ ok: true });
+      broadcastRoom(io, room);
+      if (room.status === 'waiting') broadcastRoomList(io);
+    } catch (e) {
+      err(socket, 'room:return_to_lobby_vote', e);
+      cb?.({ ok: false, error: e instanceof rooms.RoomError ? e.code : 'UNKNOWN' });
     }
   });
 
@@ -259,7 +305,8 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       player.disconnectedAt = Date.now();
       broadcastRoom(io, room);
     } else {
-      // Lobby disconnect: treat as a leave (frees the seat, may migrate host).
+      // Lobby/finished disconnect: treat as a leave (frees the seat, may
+      // migrate host, may complete a pending return-to-lobby vote).
       const { room: remaining, destroyed } = rooms.leaveRoom(roomId, socket.data.userId);
       activeRoomByUser.delete(socket.data.userId); // 🐛 FIX: was never cleared on disconnect
       if (destroyed && remaining) {
@@ -267,6 +314,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
         for (const p of remaining.players.values()) activeRoomByUser.delete(p.userId);
       } else if (remaining) {
         broadcastRoom(io, remaining);
+        if (remaining.status === 'waiting') broadcastRoomList(io); // 🆕 vote-completion-by-disconnect case
       }
       broadcastRoomList(io);
     }
@@ -303,15 +351,32 @@ function createMatchRoom(io: Server, [a, b]: [QueueEntry, QueueEntry]) {
     }
   }
   // Quick match skips the full lobby and goes straight to countdown, per spec.
+  // 🐛 FIX: the retry inside the catch block wasn't wrapped in its own
+  // try/catch — if canStart() STILL failed on the second attempt (e.g. quick
+  // match paired a lone tester with themselves during dev testing, leaving
+  // only one real active player in the room), startRace() threw again, and
+  // an uncaught exception inside a setTimeout callback can crash the whole
+  // Node process rather than just fail this one match. Now both attempts are
+  // guarded, and a genuine failure is logged + reported to the room instead
+  // of taking the server down.
   setTimeout(() => {
     try {
       const started = rooms.startRace(room.id, a.userId);
       io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
-    } catch {
-      // both players not marked ready by default for quick-match; force it
-      for (const p of room.players.values()) p.isReady = true;
-      const started = rooms.startRace(room.id, a.userId);
-      io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
+    } catch (firstErr) {
+      try {
+        // both players not marked ready by default for quick-match; force it
+        for (const p of room.players.values()) p.isReady = true;
+        const started = rooms.startRace(room.id, a.userId);
+        io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
+      } catch (secondErr) {
+        console.error(`[quickmatch] failed to start race for room ${room.id}:`, secondErr);
+        io.to(`room:${room.id}`).emit('error', {
+          forEvent: 'quickmatch:start',
+          code: secondErr instanceof rooms.RoomError ? secondErr.code : 'UNKNOWN',
+          message: 'Could not start the quick match race. Please try again.',
+        });
+      }
     }
   }, 1500); // brief "Match Found!" flash
 }

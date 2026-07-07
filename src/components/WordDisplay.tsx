@@ -10,13 +10,15 @@ interface WordProps {
   isCurrent: boolean;
   currentInput: string;
   isRef: boolean;
+  wordIndex: number; // 🆕 Part 2 — needed for the data-word-index lookup hook
   wordRef?: React.RefObject<HTMLSpanElement>;
 }
 
-const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordRef }) => {
+const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, wordRef }) => {
   return (
     <span
       ref={wordRef}
+      data-word-index={wordIndex} // 🆕 Part 2 — lookup hook for PeerCursorOverlay; no visual change
       className={[
         'relative inline-flex font-mono text-lg leading-relaxed mx-0.5 px-0.5 rounded-sm transition-colors duration-75',
         isCurrent ? 'bg-bg-tertiary' : '',
@@ -34,11 +36,14 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordRef }) =
           // The next character to type
           colorClass = 'text-word-current';
         }
-
         const isCaret = isCurrent && i === currentInput.length;
-
+        // 🆕 Part 3.5 — subtle, non-punishing pulse on the character that
+        // was JUST typed incorrectly (the char immediately behind the
+        // caret). Purely visual — doesn't touch computeWordChars or any
+        // scoring state, and never shakes the whole screen.
+        const justWrong = isCurrent && i === currentInput.length - 1 && c.state === 'incorrect';
         return (
-          <span key={i} className="relative">
+          <span key={i} className="relative" data-char-index={i}>
             {/* Blinking caret before this character */}
             {isCaret && (
               <span
@@ -46,11 +51,15 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordRef }) =
                 aria-hidden="true"
               />
             )}
-            <span className={`transition-colors duration-75 ${colorClass}`}>{c.char}</span>
+            <span
+              className={`transition-colors duration-75 ${colorClass} ${justWrong ? 'animate-pulse' : ''}`}
+              style={justWrong ? { textShadow: '0 0 6px rgb(var(--status-error) / 0.6)' } : undefined}
+            >
+              {c.char}
+            </span>
           </span>
         );
       })}
-
       {/* Caret at end of word when fully typed (and possibly overflowing) */}
       {isCurrent && currentInput.length >= word.chars.length && word.extras.length === 0 && (
         <span
@@ -58,7 +67,6 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordRef }) =
           aria-hidden="true"
         />
       )}
-
       {/* Extra (overflow) characters */}
       {(isCurrent ? word.extras : !isCurrent && word.extras.length > 0 ? word.extras : []).map(
         (ex, i) => (
@@ -94,11 +102,9 @@ const WordDisplay: React.FC = () => {
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
   const currentInput = useTypingStore(s => s.currentInput);
   const phase = useTypingStore(s => s.phase);
-
   const { inputRef, onKeyDown, onInputChange } = useKeyboardCapture();
   const containerRef = useRef<HTMLDivElement>(null);
   const currentWordRef = useRef<HTMLSpanElement>(null);
-
   // Track the row offset so we only scroll when the current word moves to a new line
   const lastTopRef = useRef<number>(0);
 
@@ -106,9 +112,7 @@ const WordDisplay: React.FC = () => {
     const container = containerRef.current;
     const currentEl = currentWordRef.current;
     if (!container || !currentEl) return;
-
     const wordTop = currentEl.offsetTop;
-
     // Only scroll when the current word starts a new visible line
     if (wordTop !== lastTopRef.current) {
       lastTopRef.current = wordTop;
@@ -137,10 +141,10 @@ const WordDisplay: React.FC = () => {
         aria-label="Type here"
         tabIndex={0}
       />
-
       {/* Word container */}
       <div
         ref={containerRef}
+        data-word-scroll-container // 🆕 Part 3 — stable lookup hook so PeerCursorOverlay/SelfCursorOverlay can find the actual scrolling/clipping box for visibility checks; no visual or behavioral change on its own
         className="relative overflow-hidden"
         style={{ height: '8rem' }} // ~3 visible lines
         onClick={() => inputRef.current?.focus()}
@@ -149,7 +153,6 @@ const WordDisplay: React.FC = () => {
             scrolled to the top of the box, so fading it just dims the text
             you're actively typing for no benefit. */}
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 z-10 bg-gradient-to-t from-bg-primary to-transparent" />
-
         <div className="flex flex-wrap gap-y-3 leading-relaxed pr-2">
           {words.map((word, i) => (
             <Word
@@ -158,12 +161,12 @@ const WordDisplay: React.FC = () => {
               isCurrent={i === currentWordIndex}
               currentInput={i === currentWordIndex ? currentInput : ''}
               isRef={i === currentWordIndex}
+              wordIndex={i}
               wordRef={i === currentWordIndex ? currentWordRef : undefined}
             />
           ))}
         </div>
       </div>
-
       {/* Idle hint */}
       {phase === 'idle' && (
         <p className="text-center text-text-muted text-sm font-mono mt-4 animate-fadeIn">

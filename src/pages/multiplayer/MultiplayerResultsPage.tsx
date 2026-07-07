@@ -1,6 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
+import { resolvePlayerColor } from '../../data/playerColors'; // 🆕 Part 1
+import { fetchUserStats } from '../../services/results.service'; // 🆕 Part 4.6
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
@@ -10,14 +14,31 @@ import Footer from '../../components/Footer';
  * a leaderboard" moment as singleplayer Results.tsx) but is its own component
  * rather than a fork of Results.tsx, since the shape of the data is
  * fundamentally different (a ranked list of players' server-verified stats,
- * not one player's own history chart). See README section on whether to
- * persist these to Supabase — not wired up yet, flagged for your decision.
+ * not one player's own history chart).
+ *
+ * 🐛 FIX: the previous `isHost` calculation —
+ *   `room.hostUserId === room.players.find(p => p.isHost)?.userId`
+ * — compares the host's own userId to itself and is therefore always true
+ * whenever the room has a host at all, regardless of who's VIEWING the page.
+ * That meant every player saw the host-only Rematch/Change Settings buttons.
+ * Fixed by comparing against the actually-signed-in currentUser instead.
+ *
+ * Part 4.5 (rematch) and Part 5 (return-to-lobby vote) are the same feature
+ * — see the task consolidation note — so there's a single vote-based CTA
+ * here rather than a separate one-click "Rematch" button that would race
+ * against it. The old host-only "Change Settings" button is dropped too:
+ * once the vote completes and everyone's back in the lobby, settings are
+ * already editable there via RoomSettingsPanel.
  */
 const MultiplayerResultsPage: React.FC = () => {
   const room = useMultiplayerStore((s) => s.currentRoom);
-  const startRace = useMultiplayerStore((s) => s.startRace);
   const leaveRoom = useMultiplayerStore((s) => s.leaveRoom);
+  const voteReturnToLobby = useMultiplayerStore((s) => s.voteReturnToLobby); // 🆕 Part 5
+  const currentUser = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme); // 🆕 Part 1
   const navigate = useNavigate();
+
+  const [personalBest, setPersonalBest] = useState<number | null>(null);
 
   const leaderboard = useMemo(() => {
     if (!room) return [];
@@ -30,21 +51,87 @@ const MultiplayerResultsPage: React.FC = () => {
       });
   }, [room]);
 
-  if (!room) return null;
-  const isHost = room.hostUserId === room.players.find((p) => p.isHost)?.userId;
+  // 🆕 Part 4.6 — personal-best delta. Every multiplayer participant is
+  // already authenticated (guests are gated out before they can even
+  // connect — see MultiplayerAuthModal / useMultiplayerStore.connect()), so
+  // there's no separate "guest skips this" branch needed here; the null
+  // check below is just defensive.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    fetchUserStats(currentUser.id).then((stats) => {
+      if (!cancelled) setPersonalBest(stats?.bestWpm ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  if (!room || !currentUser) return null;
+
+  const votes = new Set(room.returnToLobbyVotes);
+  const activePlayers = room.players.filter((p) => !p.isSpectator && p.connection !== 'abandoned');
+  const myVote = votes.has(currentUser.id);
+  const myResult = leaderboard.find((p) => p.userId === currentUser.id);
+
+  const podium = leaderboard.slice(0, 3);
+  const rest = leaderboard.slice(3);
+
+  // 🆕 Part 4.4 — micro-awards, computed purely from finalStats already on
+  // the DTO. "Comeback" (largest mid-race rank improvement) is deliberately
+  // NOT included: neither the server nor the client retains any per-tick
+  // progress HISTORY today (only the latest snapshot is ever kept), so there
+  // is no data to compute it from without adding new tracking — flagging
+  // this rather than fabricating a result. Say the word and I'll wire up a
+  // small progressHistory array server-side if you want this award.
+  const fastestFingers = leaderboard.reduce<typeof leaderboard[number] | null>(
+    (best, p) => ((p.finalStats?.wpm ?? 0) > (best?.finalStats?.wpm ?? 0) ? p : best),
+    leaderboard[0] ?? null
+  );
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header />
       <ModeTabBar />
-      <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full flex flex-col gap-4">
+      <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full flex flex-col gap-6">
         <h1 className="text-2xl font-bold">Race Results</h1>
 
+        {/* 🆕 Part 4.1 — podium for the top 3 */}
+        {podium.length > 0 && (
+          <div className="flex items-end justify-center gap-4">
+            {[podium[1], podium[0], podium[2]].map((p, i) =>
+              p ? (
+                <div key={p.userId} className={`flex flex-col items-center ${i === 1 ? 'order-2' : ''}`}>
+                  <div
+                    className="rounded-t-lg w-20 flex items-start justify-center pt-2 text-bg-primary font-bold"
+                    style={{
+                      height: i === 1 ? 96 : i === 0 ? 68 : 52,
+                      background: i === 1 ? '#FFD24D' : i === 0 ? '#C0C0C0' : '#CD7F32',
+                    }}
+                  >
+                    {p.finalStats?.wpm ?? 0}
+                  </div>
+                  <span
+                    className="w-2 h-2 rounded-full mt-1"
+                    style={{ background: resolvePlayerColor(p.colorId, theme) }}
+                  />
+                  <span className="text-xs mt-1 truncate max-w-[5rem]">{p.username}</span>
+                </div>
+              ) : (
+                <div key={`empty-podium-${i}`} className="w-20" />
+              )
+            )}
+          </div>
+        )}
+
+        {/* Ranked list (4th+), plus per-player stat detail (Part 4.3) */}
         <div className="bg-bg-secondary border border-border rounded-xl divide-y divide-border">
-          {leaderboard.map((p, i) => (
+          {rest.map((p, i) => (
             <div key={p.userId} className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="w-6 text-text-muted font-mono">{i + 1}</span>
+                <span className="w-6 text-text-muted font-mono">{i + 4}</span>
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: resolvePlayerColor(p.colorId, theme) }}
+                />
                 <span className="font-medium">{p.username}</span>
                 {p.finalStats?.dnf && <span className="text-xs text-text-muted">(left)</span>}
                 {p.finalStats?.outlierFlag && (
@@ -60,20 +147,40 @@ const MultiplayerResultsPage: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex gap-3">
-          {isHost && (
-            <button className="px-4 py-2 rounded-lg bg-accent text-bg-primary font-semibold" onClick={startRace}>
-              Rematch
-            </button>
-          )}
-          {isHost && (
-            <button className="px-4 py-2 rounded-lg border border-border" onClick={() => navigate('/multiplayer/lobby')}>
-              Change Settings
-            </button>
-          )}
+        {/* 🆕 Part 4.4 — micro-awards */}
+        {fastestFingers && (
+          <div className="flex gap-3 flex-wrap">
+            <span className="px-3 py-1 rounded-full bg-bg-secondary border border-border text-xs">
+              ⚡ Fastest fingers: {fastestFingers.username} ({fastestFingers.finalStats?.wpm ?? 0} wpm)
+            </span>
+          </div>
+        )}
+
+        {/* 🆕 Part 4.6 — personal-best delta */}
+        {personalBest !== null && myResult?.finalStats && !myResult.finalStats.dnf && (
+          <p className="text-sm text-text-muted">
+            {myResult.finalStats.wpm > personalBest
+              ? `New personal best! +${myResult.finalStats.wpm - personalBest} wpm over your previous best of ${personalBest}.`
+              : `${personalBest - myResult.finalStats.wpm} wpm below your personal best of ${personalBest}.`}
+          </p>
+        )}
+
+        {/* 🆕 Part 5 — return-to-lobby vote, doubling as the rematch CTA */}
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            className="px-4 py-2 rounded-lg border border-border"
-            onClick={() => { leaveRoom(); navigate('/multiplayer'); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              myVote ? 'bg-accent text-bg-primary' : 'border border-border hover:border-accent/60'
+            }`}
+            onClick={() => voteReturnToLobby(!myVote)}
+          >
+            {myVote ? 'Waiting for others…' : 'Return to Lobby'}
+          </button>
+          <span className="text-sm text-text-muted">
+            {votes.size} of {activePlayers.length} want a rematch
+          </span>
+          <button
+            className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
+            onClick={() => { voteReturnToLobby(false); leaveRoom(); navigate('/multiplayer'); }}
           >
             Leave
           </button>

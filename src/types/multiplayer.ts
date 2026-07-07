@@ -1,4 +1,5 @@
 import type { TestMode, WordSet } from './index';
+import type { ColorId } from '../data/playerColors'; // 🆕 Part 1
 
 export type RoomVisibility = 'public' | 'private';
 export type RoomStatus = 'waiting' | 'countdown' | 'racing' | 'finished';
@@ -21,6 +22,7 @@ export interface RoomPlayerDTO {
   userId: string;
   username: string;
   avatarUrl: string | null;
+  colorId: ColorId; // 🆕 Part 1
   isHost: boolean;
   isReady: boolean;
   isSpectator: boolean;
@@ -28,6 +30,7 @@ export interface RoomPlayerDTO {
   disconnectedAt: number | null;
   progress: {
     wordIndex: number;
+    completedChars: number; // 🆕 Part 2
     elapsedMs: number;
     wpm: number;
     rawWpm: number;
@@ -53,6 +56,7 @@ export interface RoomStateDTO {
   players: RoomPlayerDTO[];
   startTimestamp: number | null;
   createdAt: number;
+  returnToLobbyVotes: string[]; // 🆕 Part 5 — userIds who've opted in to a rematch
 }
 
 export interface RoomListEntry {

@@ -8,6 +8,7 @@ import type {
   QuickMatchSettings,
   ServerErrorPayload,
 } from '../types/multiplayer';
+import type { ColorId } from '../data/playerColors'; // 🆕 Part 1
 
 const SERVER_URL = import.meta.env.VITE_MULTIPLAYER_SERVER_URL as string;
 
@@ -97,6 +98,11 @@ export function updateRoomSettings(roomId: string, patch: Partial<CreateRoomInpu
   getSocket().emit('lobby:update_settings', { roomId, patch });
 }
 
+// 🆕 Part 1 — color selection
+export function setColor(roomId: string, colorId: ColorId): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => getSocket().emit('lobby:set_color', { roomId, colorId }, resolve));
+}
+
 export function kickPlayer(roomId: string, targetUserId: string) {
   getSocket().emit('lobby:kick', { roomId, targetUserId });
 }
@@ -109,9 +115,10 @@ export function startRace(roomId: string) {
   getSocket().emit('lobby:start', { roomId });
 }
 
+// 🆕 Part 2 — completedChars added, additive to the existing fields
 export function sendProgress(
   roomId: string,
-  progress: { wordIndex: number; elapsedMs: number; wpm: number; rawWpm: number; accuracy: number },
+  progress: { wordIndex: number; completedChars: number; elapsedMs: number; wpm: number; rawWpm: number; accuracy: number },
 ) {
   getSocket().emit('race:progress', { roomId, ...progress });
 }
@@ -137,6 +144,11 @@ export function cancelQuickMatch() {
   getSocket().emit('quickmatch:cancel');
 }
 
+// 🆕 Part 5 — return-to-lobby vote toggle
+export function voteReturnToLobby(roomId: string, optIn: boolean): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => getSocket().emit('room:return_to_lobby_vote', { roomId, optIn }, resolve));
+}
+
 // ─── Event subscription helpers ─────────────────────────────────────────────
 // The store calls these once, on socket connect, to wire server pushes into
 // Zustand state. Exported as named functions (rather than the store
@@ -159,7 +171,15 @@ export function onRaceWords(cb: (payload: { words: string[]; startTimestamp: num
   getSocket().on('race:words', cb);
 }
 export function onRaceProgressBroadcast(
-  cb: (payload: { userId: string; wordIndex: number; elapsedMs: number; wpm: number; rawWpm: number; accuracy: number }) => void,
+  cb: (payload: {
+    userId: string;
+    wordIndex: number;
+    completedChars: number; // 🆕 Part 2
+    elapsedMs: number;
+    wpm: number;
+    rawWpm: number;
+    accuracy: number;
+  }) => void,
 ) {
   getSocket().on('race:progress_broadcast', cb);
 }

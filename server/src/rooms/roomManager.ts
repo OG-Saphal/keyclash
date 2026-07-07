@@ -7,6 +7,7 @@ import type {
   RoomStateDTO,
   RoomListEntry,
 } from './types.js';
+import { COLOR_IDS, type ColorId } from './playerColors.js'; // 🆕 Part 1
 import { generateRaceWords } from '../game/wordGeneration.js';
 import { config } from '../config.js';
 
@@ -43,6 +44,44 @@ function checkRateLimit(userId: string, roomId: string) {
   }
 }
 
+// ─── Player colors (Part 1) ────────────────────────────────────────────────
+// Server is the source of truth for color assignment, following the same
+// pattern as every other room mutation below.
+
+/**
+ * First unused color among currently non-abandoned players. Abandoned
+ * players are excluded from the "taken" set so their color frees up
+ * immediately, per spec — they stay in the room (for the results screen)
+ * but shouldn't block a color from being reused.
+ */
+function assignColor(room: RoomState): ColorId {
+  const taken = new Set(
+    [...room.players.values()]
+      .filter((p) => p.connection !== 'abandoned')
+      .map((p) => p.colorId)
+  );
+  const free = COLOR_IDS.find((c) => !taken.has(c));
+  // Palette (8) vs maxPlayers (up to 10) can theoretically run out — fall
+  // back to cycling rather than throwing, since a duplicate color here is a
+  // cosmetic degradation, not a correctness break.
+  return free ?? COLOR_IDS[room.players.size % COLOR_IDS.length];
+}
+
+export function setPlayerColor(roomId: string, userId: string, colorId: ColorId): RoomState {
+  const room = getRoomOrThrow(roomId);
+  const player = room.players.get(userId);
+  if (!player) throw new RoomError('NOT_IN_ROOM', 'You are not in this room.');
+
+  const takenBy = [...room.players.values()].find(
+    (p) => p.userId !== userId && p.colorId === colorId && p.connection !== 'abandoned'
+  );
+  if (takenBy) throw new RoomError('COLOR_TAKEN', 'Another player already has that color.');
+
+  player.colorId = colorId;
+  room.lastActivityAt = Date.now();
+  return room;
+}
+
 // ─── DTO conversion ─────────────────────────────────────────────────────────
 
 export function toDTO(room: RoomState): RoomStateDTO {
@@ -58,6 +97,7 @@ export function toDTO(room: RoomState): RoomStateDTO {
     players: [...room.players.values()].map(({ socketId, ...rest }) => rest),
     startTimestamp: room.startTimestamp,
     createdAt: room.createdAt,
+    returnToLobbyVotes: [...room.returnToLobbyVotes], // 🆕 Part 5
   };
 }
 
@@ -105,6 +145,7 @@ export function createRoom(
     userId: host.userId,
     username: host.username,
     avatarUrl: host.avatarUrl,
+    colorId: COLOR_IDS[0], // 🆕 Part 1 — first color; room has only the host so far
     isHost: true,
     isReady: true, // host is implicitly ready
     isSpectator: false,
@@ -129,6 +170,7 @@ export function createRoom(
     startTimestamp: null,
     createdAt: now,
     lastActivityAt: now,
+    returnToLobbyVotes: new Set(), // 🆕 Part 5
   };
 
   roomStore.set(id, room);
@@ -159,6 +201,8 @@ export function joinRoom(
   if (existing) {
     // Rejoin (e.g. reconnect flow handles this separately, but a plain
     // re-join from the room browser should just resume their existing seat).
+    // Deliberately does NOT touch colorId — a returning player keeps the
+    // color they already had.
     existing.connection = 'connected';
     existing.disconnectedAt = null;
     room.lastActivityAt = Date.now();
@@ -176,6 +220,7 @@ export function joinRoom(
     userId: user.userId,
     username: user.username,
     avatarUrl: user.avatarUrl,
+    colorId: assignColor(room), // 🆕 Part 1
     isHost: false,
     isReady: false,
     isSpectator: asSpectator,
@@ -197,6 +242,7 @@ export function leaveRoom(roomId: string, userId: string): { room: RoomState | n
   if (!room) return { room: null, destroyed: false };
 
   room.players.delete(userId);
+  room.returnToLobbyVotes.delete(userId); // 🆕 Part 5 — leaving player drops out of the vote count too
   room.lastActivityAt = Date.now();
 
   // 🐛 FIX: previously this only destroyed the room when players.size === 0,
@@ -220,6 +266,10 @@ export function leaveRoom(roomId: string, userId: string): { room: RoomState | n
   if (room.hostUserId === userId) {
     migrateHost(room);
   }
+
+  // 🆕 Part 5 — the departing player might have been the last hold-out vote;
+  // re-check whether everyone remaining has now voted.
+  maybeTransitionToLobby(room);
 
   return { room, destroyed: false };
 }
@@ -270,7 +320,9 @@ export function kickPlayer(roomId: string, hostUserId: string, targetUserId: str
   assertHost(room, hostUserId);
   if (targetUserId === hostUserId) throw new RoomError('INVALID_ACTION', "Host can't kick themselves.");
   room.players.delete(targetUserId);
+  room.returnToLobbyVotes.delete(targetUserId); // 🆕 Part 5
   room.lastActivityAt = Date.now();
+  maybeTransitionToLobby(room); // 🆕 Part 5 — kicking someone might complete the vote
   return room;
 }
 
@@ -322,7 +374,7 @@ export function startRace(roomId: string, hostUserId: string): RoomState {
 
   for (const p of room.players.values()) {
     if (!p.isSpectator) {
-      p.progress = { wordIndex: 0, elapsedMs: 0, wpm: 0, rawWpm: 0, accuracy: 100, updatedAt: Date.now() };
+      p.progress = { wordIndex: 0, completedChars: 0, elapsedMs: 0, wpm: 0, rawWpm: 0, accuracy: 100, updatedAt: Date.now() };
       p.finalStats = null;
     }
   }
@@ -341,7 +393,7 @@ export function startRace(roomId: string, hostUserId: string): RoomState {
 export function recordProgress(
   roomId: string,
   userId: string,
-  progress: { wordIndex: number; elapsedMs: number; wpm: number; rawWpm: number; accuracy: number },
+  progress: { wordIndex: number; completedChars: number; elapsedMs: number; wpm: number; rawWpm: number; accuracy: number },
 ) {
   const room = roomStore.get(roomId);
   if (!room || room.status !== 'racing') return;
@@ -374,6 +426,65 @@ export function markAbandoned(room: RoomState, userId: string) {
     dnf: true,
     outlierFlag: false,
   };
+  room.returnToLobbyVotes.delete(userId); // 🆕 Part 5 — abandoned players drop out of vote bookkeeping
+  maybeTransitionToLobby(room); // 🆕 Part 5 — abandonment might complete the vote for everyone left
+}
+
+// ─── Return-to-lobby vote (Part 5) ──────────────────────────────────────────
+
+export function voteReturnToLobby(roomId: string, userId: string, optIn: boolean): RoomState {
+  const room = getRoomOrThrow(roomId);
+  if (room.status !== 'finished') {
+    throw new RoomError('INVALID_STATE', 'Can only vote to return to lobby after a race finishes.');
+  }
+  const player = room.players.get(userId);
+  if (!player || player.isSpectator) {
+    throw new RoomError('NOT_IN_ROOM', 'You are not an active player in this room.');
+  }
+
+  if (optIn) room.returnToLobbyVotes.add(userId);
+  else room.returnToLobbyVotes.delete(userId);
+  room.lastActivityAt = Date.now();
+
+  maybeTransitionToLobby(room);
+  return room;
+}
+
+/**
+ * Checks whether every currently-active (non-spectator, non-abandoned)
+ * player has opted in, and if so transitions the room back to 'waiting'.
+ * Called after every vote change AND after leave/kick/abandon, since any of
+ * those can change the denominator and complete the vote without a new
+ * click — there's deliberately no special-casing of "the last click".
+ */
+function maybeTransitionToLobby(room: RoomState) {
+  if (room.status !== 'finished') return;
+
+  const activePlayers = [...room.players.values()].filter(
+    (p) => !p.isSpectator && p.connection !== 'abandoned'
+  );
+  if (activePlayers.length === 0) return;
+
+  const allVoted = activePlayers.every((p) => room.returnToLobbyVotes.has(p.userId));
+  if (!allVoted) return;
+
+  // 🆕 Part 5 — finished -> waiting. Preserve room code, password, settings,
+  // and each player's colorId. Reset everything race-specific and clear votes.
+  room.status = 'waiting';
+  room.raceWords = null;
+  room.startTimestamp = null;
+  room.returnToLobbyVotes.clear();
+
+  for (const p of room.players.values()) {
+    if (p.connection === 'abandoned') continue; // excluded from reappearing per spec
+    p.finalStats = null;
+    p.progress = null;
+    p.isReady = p.isHost; // same "host implicitly ready" convention as createRoom
+  }
+
+  // Bump activity so cleanupSweep's idle-room GC doesn't reap a room that
+  // just came back to life.
+  room.lastActivityAt = Date.now();
 }
 
 // ─── Cleanup sweep ──────────────────────────────────────────────────────────

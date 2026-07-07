@@ -1,18 +1,5 @@
-import React, { useEffect, useState } from 'react';
-
-const themeStorageKey = 'keyclash-theme';
-type Theme = 'dark' | 'light';
-
-const getPreferredTheme = (): Theme => {
-    if (typeof window === 'undefined') return 'dark';
-    const saved = window.localStorage.getItem(themeStorageKey) as Theme | null;
-    if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-};
-
-const applyTheme = (theme: Theme) => {
-    document.documentElement.dataset.theme = theme;
-};
+import React from 'react';
+import { useThemeStore } from '../store/useThemeStore';
 
 const SunIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -30,21 +17,21 @@ const MoonIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+// 🆕 Theme state moved into useThemeStore.ts (see that file) so other
+// components — the Part 1 color swatch picker, the Part 2 PeerCursorOverlay
+// — can read/react to it too. This component is now a pure view over the
+// store; markup/behavior are otherwise unchanged from the original.
 const ThemeToggle: React.FC = () => {
-    const [theme, setTheme] = useState<Theme>(getPreferredTheme);
-
-    useEffect(() => {
-        applyTheme(theme);
-        window.localStorage.setItem(themeStorageKey, theme);
-    }, [theme]);
+    const theme = useThemeStore((s) => s.theme);
+    const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
     const isLight = theme === 'light';
-    const nextTheme: Theme = isLight ? 'dark' : 'light';
+    const nextTheme: 'dark' | 'light' = isLight ? 'dark' : 'light';
 
     return (
         <button
             type="button"
-            onClick={() => setTheme(nextTheme)}
+            onClick={toggleTheme}
             aria-label={`Switch to ${nextTheme} theme`}
             style={{
                 position: 'relative', display: 'inline-flex', alignItems: 'center',
