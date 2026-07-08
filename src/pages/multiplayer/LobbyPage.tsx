@@ -1,46 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Copy,
-  Check,
-  Link as LinkIcon,
-  LogOut,
-  Flag,
-  Users,
-  Pencil,
-  ChevronDown,
-  Globe,
-  Lock,
-  Crown,
-} from 'lucide-react';
+import { Copy, Check, Link as LinkIcon, LogOut, Flag, Users, Pencil, ChevronDown, Globe, Lock, Crown } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useThemeStore } from '../../store/useThemeStore';
-import { resolvePlayerColor } from '../../data/playerColors';
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 import PlayerAvatar from '../../components/multiplayer/PlayerAvatar';
-import PlayerColorSwatches from '../../components/multiplayer/PlayerColorSwatches';
 import type { RoomSettingsDTO, CreateRoomInput } from '../../types/multiplayer';
+import PlayerColorSwatches from '../../components/multiplayer/PlayerColorSwatches';
+import { resolvePlayerColor } from '../../data/playerColors';
+import { useThemeStore } from '../../store/useThemeStore';
+
 
 const LobbyPage: React.FC = () => {
   const room = useMultiplayerStore((s) => s.currentRoom);
   const setReady = useMultiplayerStore((s) => s.setReady);
+  const theme = useThemeStore((s) => s.theme);
   const kickPlayer = useMultiplayerStore((s) => s.kickPlayer);
   const transferHost = useMultiplayerStore((s) => s.transferHost);
   const startRaceAction = useMultiplayerStore((s) => s.startRace);
   const leaveRoom = useMultiplayerStore((s) => s.leaveRoom);
   const updateSettings = useMultiplayerStore((s) => s.updateSettings);
   const currentUser = useAuthStore((s) => s.user);
-  const theme = useThemeStore((s) => s.theme);
   const navigate = useNavigate();
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editSettings, setEditSettings] = useState<RoomSettingsDTO | null>(null);
 
-  // Navigation effects removed – handled globally by <RoomStatusRouter />
+  useEffect(() => {
+    if (room?.status === 'countdown' || room?.status === 'racing') {
+      navigate('/multiplayer/race');
+    }
+    if (!room) {
+      navigate('/multiplayer');
+    }
+  }, [room?.status, room, navigate]);
 
   if (!room || !currentUser) return null;
 
@@ -122,10 +118,11 @@ const LobbyPage: React.FC = () => {
                   <LogOut className="w-4 h-4" /> Leave
                 </button>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <button
                   onClick={copyCode}
-                  className="flex items-center gap-2 bg-bg-primary/70 rounded-lg px-3 py-1.5 font-mono text-sm tracking-widest hover:bg-bg-primary shadow-sm transition-colors"
+                  className="flex items-center cursor-pointer gap-2 bg-bg-primary/70 rounded-lg px-3 py-1.5 font-mono text-sm tracking-widest hover:bg-bg-primary shadow-sm transition-colors"
                 >
                   {room.id}
                   {copied === 'code' ? (
@@ -134,6 +131,7 @@ const LobbyPage: React.FC = () => {
                     <Copy className="w-3.5 h-3.5 text-text-muted" />
                   )}
                 </button>
+
                 <button
                   onClick={copyInviteLink}
                   className="flex items-center cursor-pointer gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-bg-primary/70 text-text-muted hover:text-text-primary hover:bg-bg-primary shadow-sm transition-colors"
@@ -144,7 +142,7 @@ const LobbyPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Room settings – only host can edit */}
+            {/* Room settings – always shown for host */}
             {isHost && (
               <div className="bg-bg-secondary/80 rounded-xl p-4 shadow-sm flex-shrink-0 max-h-[calc(100%-140px)] overflow-y-auto">
                 {editMode ? (
@@ -156,6 +154,7 @@ const LobbyPage: React.FC = () => {
                       </h3>
                     </div>
 
+                    {/* 3‑column grid for Mode, Duration/WordCount, WordSet */}
                     <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="text-xs text-text-muted uppercase tracking-wider">Mode</label>
@@ -201,11 +200,11 @@ const LobbyPage: React.FC = () => {
                           >
                             {editSettings?.mode === 'time'
                               ? [15, 30, 60, 120].map((d) => (
-                                  <option key={d} value={d}>{d}s</option>
-                                ))
+                                <option key={d} value={d}>{d}s</option>
+                              ))
                               : [10, 25, 50, 100].map((w) => (
-                                  <option key={w} value={w}>{w} words</option>
-                                ))}
+                                <option key={w} value={w}>{w} words</option>
+                              ))}
                           </select>
                           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                         </div>
@@ -227,11 +226,12 @@ const LobbyPage: React.FC = () => {
                             <option value="english1k">English 1k</option>
                             <option value="common">Common</option>
                           </select>
-                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                          <ChevronDown className="absolute  right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                         </div>
                       </div>
                     </div>
 
+                    {/* Max Players & Visibility – side by side */}
                     <div className="flex items-center gap-4">
                       <div className="flex-1">
                         <label className="text-xs text-text-muted uppercase tracking-wider">Max Players</label>
@@ -273,11 +273,10 @@ const LobbyPage: React.FC = () => {
                                 prev ? { ...prev, visibility: 'public' } : null
                               )
                             }
-                            className={`flex-1 flex items-center cursor-pointer justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition-colors ${
-                              editSettings?.visibility === 'public'
-                                ? 'bg-accent-primary/20 border-accent-primary text-accent-primary shadow-sm'
-                                : 'bg-bg-primary/40 border-border/30 text-text-muted hover:bg-bg-primary/60'
-                            }`}
+                            className={`flex-1 flex items-center cursor-pointer justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition-colors ${editSettings?.visibility === 'public'
+                              ? 'bg-accent-primary/20 border-accent-primary text-accent-primary shadow-sm'
+                              : 'bg-bg-primary/40 border-border/30 text-text-muted hover:bg-bg-primary/60'
+                              }`}
                           >
                             <Globe className="w-4 h-4" /> Public
                           </button>
@@ -288,11 +287,10 @@ const LobbyPage: React.FC = () => {
                                 prev ? { ...prev, visibility: 'private' } : null
                               )
                             }
-                            className={`flex-1 flex items-center cursor-pointer justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition-colors ${
-                              editSettings?.visibility === 'private'
-                                ? 'bg-accent-primary/20 border-accent-primary text-accent-primary shadow-sm'
-                                : 'bg-bg-primary/40 border-border/30 text-text-muted hover:bg-bg-primary/60'
-                            }`}
+                            className={`flex-1 flex items-center cursor-pointer justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition-colors ${editSettings?.visibility === 'private'
+                              ? 'bg-accent-primary/20 border-accent-primary text-accent-primary shadow-sm'
+                              : 'bg-bg-primary/40 border-border/30 text-text-muted hover:bg-bg-primary/60'
+                              }`}
                           >
                             <Lock className="w-4 h-4" /> Private
                           </button>
@@ -302,6 +300,7 @@ const LobbyPage: React.FC = () => {
 
                     <div className="h-3" />
 
+                    {/* Buttons: Cancel left, Save Changes right */}
                     <div className="flex justify-between items-center">
                       <button
                         onClick={cancelEdit}
@@ -366,14 +365,13 @@ const LobbyPage: React.FC = () => {
               <div className="flex gap-3">
                 {!isHost && (
                   <button
-                    className={`flex-1 px-4 py-3 rounded-xl cursor-pointer font-semibold text-center transition-colors ${
-                      me?.isReady
-                        ? 'bg-bg-secondary/80 text-text-muted shadow-sm border border-transparent hover:text-red-400 hover:border-red-400'
-                        : 'bg-accent-primary text-white shadow-sm hover:brightness-105'
-                    }`}
+                    className={`flex-1 px-4 py-3 rounded-xl cursor-pointer font-semibold text-center transition-colors ${me?.isReady
+                      ? 'bg-bg-secondary/80 text-text-muted shadow-sm border border-transparent hover:text-red-400 hover:border-red-400'
+                      : 'bg-accent-primary text-white shadow-sm hover:brightness-105'
+                      }`}
                     onClick={() => setReady(!me?.isReady)}
                   >
-                    {me?.isReady ? 'Unready' : 'Ready'}
+                    {me?.isReady ? 'Unready' : "Ready"}
                   </button>
                 )}
                 {isHost && (
@@ -390,7 +388,7 @@ const LobbyPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right column – Player List with color features */}
+          {/* Right column – Player List */}
           <div className="lg:col-span-2 bg-bg-secondary/80 rounded-xl shadow-sm flex flex-col h-full overflow-hidden">
             <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 text-sm font-semibold text-text-muted">
               <Users className="w-4 h-4" /> Players ({activePlayers.length}/{settings.maxPlayers})
@@ -422,11 +420,10 @@ const LobbyPage: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              p.isHost || p.isReady
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-bg-primary/50 text-text-muted'
-                            }`}
+                            className={`text-xs px-2 py-0.5 rounded-full ${p.isHost || p.isReady
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'bg-bg-primary/50 text-text-muted'
+                              }`}
                           >
                             {p.isHost ? 'Host' : p.isReady ? '● Ready' : 'Not ready'}
                           </span>
