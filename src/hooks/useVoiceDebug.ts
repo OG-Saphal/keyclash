@@ -1,51 +1,62 @@
 // hooks/useVoiceDebug.ts
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useVoiceStore } from '../store/useVoiceStore';
 
 const DEBUG_VOICE = true;
 
+// Infer the store's state type automatically
+type VoiceState = ReturnType<typeof useVoiceStore.getState>;
+
 export function useVoiceDebug() {
-    useEffect(() => {
-        if (!DEBUG_VOICE) return;
+  // Keep previous state snapshots to detect changes
+  const prevPeersRef = useRef<Record<string, { speaking: boolean; muted: boolean }>>({});
+  const prevLocalSpeakingRef = useRef<boolean>(false);
 
-        const unsubscribe = useVoiceStore.subscribe(
-            (state) => state.peers,
-            (peers, prevPeers) => {
-                const newPeers = Object.keys(peers).filter(id => !prevPeers[id]);
-                const removedPeers = Object.keys(prevPeers).filter(id => !peers[id]);
+  useEffect(() => {
+    if (!DEBUG_VOICE) return;
 
-                newPeers.forEach(id => console.log(`[voice] 🟢 Peer stream added: ${id}`));
-                removedPeers.forEach(id => console.log(`[voice] 🔴 Peer stream removed: ${id}`));
+    // Subscribe to full state changes – one argument (listener)
+    const unsubscribe = useVoiceStore.subscribe((state: VoiceState) => {
+      const peers = state.peers || {};
+      const prevPeers = prevPeersRef.current;
 
-                Object.keys(peers).forEach(id => {
-                    const nowSpeaking = peers[id]?.speaking || false;
-                    const wasSpeaking = prevPeers[id]?.speaking || false;
-                    if (nowSpeaking !== wasSpeaking) {
-                        console.log(`[voice] 🗣️ Peer ${id} ${nowSpeaking ? 'STARTED' : 'STOPPED'} speaking`);
-                    }
+      // Detect new/removed peers
+      const newPeers = Object.keys(peers).filter(id => !prevPeers[id]);
+      const removedPeers = Object.keys(prevPeers).filter(id => !peers[id]);
 
-                    const nowMuted = peers[id]?.muted || false;
-                    const wasMuted = prevPeers[id]?.muted || false;
-                    if (nowMuted !== wasMuted) {
-                        console.log(`[voice] ${nowMuted ? '🔇' : '🔊'} Peer ${id} ${nowMuted ? 'muted' : 'unmuted'}`);
-                    }
-                });
-            },
-            { fireImmediately: false }
-        );
+      newPeers.forEach(id => {
+        console.log(`[voice] 🟢 Peer stream added: ${id}`);
+      });
+      removedPeers.forEach(id => {
+        console.log(`[voice] 🔴 Peer stream removed: ${id}`);
+      });
 
-        const unsubscribeLocal = useVoiceStore.subscribe(
-            (state) => state.localSpeaking,
-            (now, prev) => {
-                if (now !== prev) {
-                    console.log(`[voice] 🗣️ YOU ${now ? 'STARTED' : 'STOPPED'} speaking`);
-                }
-            }
-        );
+      // Detect speaking and mute changes per peer
+      Object.keys(peers).forEach(id => {
+        const peer = peers[id];
+        const prevPeer = prevPeers[id] || { speaking: false, muted: false };
 
-        return () => {
-            unsubscribe();
-            unsubscribeLocal();
-        };
-    }, []);
+        if (peer.speaking !== prevPeer.speaking) {
+          console.log(`[voice] 🗣️ Peer ${id} ${peer.speaking ? 'STARTED' : 'STOPPED'} speaking`);
+        }
+        if (peer.muted !== prevPeer.muted) {
+          console.log(`[voice] ${peer.muted ? '🔇' : '🔊'} Peer ${id} ${peer.muted ? 'muted' : 'unmuted'}`);
+        }
+      });
+
+      // Update previous peers reference
+      prevPeersRef.current = peers;
+
+      // Local speaking detection
+      const localSpeaking = state.localSpeaking || false;
+      if (localSpeaking !== prevLocalSpeakingRef.current) {
+        console.log(`[voice] 🗣️ YOU ${localSpeaking ? 'STARTED' : 'STOPPED'} speaking`);
+        prevLocalSpeakingRef.current = localSpeaking;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 }
