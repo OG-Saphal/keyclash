@@ -27,6 +27,12 @@ const ICE_SERVERS = {
             username: 'af8144af8e6b1b9e714925c8',
             credential: 'JOnxdfLjdjSL01MU',
         },
+        // Free fallback
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject',
+        },
     ],
 };
 
@@ -39,6 +45,7 @@ class VoiceService {
     private listenersSetup = false;
     private makingOffer: Set<string> = new Set();
     private wasInVoice = false;
+    private joined = false; // Prevents duplicate join calls
 
     private isPolite(peerId: string): boolean {
         return this.userId! < peerId;
@@ -74,13 +81,23 @@ class VoiceService {
     async joinVoice() {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
+
+        // If already joined the same room, do nothing.
+        if (this.joined && this.roomId === room?.id) return;
+
         if (!room || !user) {
             console.warn('[voice-client] cannot join - no room or user');
             return;
         }
 
+        // If we were joined to a different room, leave first.
+        if (this.joined) {
+            this.leaveVoice();
+        }
+
         this.userId = user.id;
         this.roomId = room.id;
+        this.joined = true;
         this.wasInVoice = true;
 
         this.ensureSocketAndListeners();
@@ -90,10 +107,10 @@ class VoiceService {
             useVoiceStore.getState().setLocalStream(this.localStream);
         } catch (err) {
             console.error('Failed to get mic', err);
+            this.joined = false;
             return;
         }
 
-        // Send roomId explicitly to the server
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             console.log('[voice-client] roster received:', roster);
             roster.forEach(peerId => {
@@ -105,6 +122,8 @@ class VoiceService {
     }
 
     leaveVoice() {
+        this.joined = false;
+        this.wasInVoice = false;
         if (!this.userId) return;
         this.socket?.emit('voice:leave', this.userId);
 
@@ -120,7 +139,6 @@ class VoiceService {
         useVoiceStore.getState().reset();
         this.userId = null;
         this.roomId = null;
-        this.wasInVoice = false;
     }
 
     toggleMute() {
@@ -212,7 +230,6 @@ class VoiceService {
 
         let pc = this.peerConnections.get(fromUserId);
 
-        // Perfect negotiation collision handling
         if (type === 'offer') {
             const collision = this.makingOffer.has(fromUserId);
             if (collision) {
@@ -280,6 +297,7 @@ class VoiceService {
 
     private rejoinVoice() {
         if (!this.roomId || !this.userId) return;
+        this.joined = true;
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             this.peerConnections.forEach(pc => pc.close());
             this.peerConnections.clear();

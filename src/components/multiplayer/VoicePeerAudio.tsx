@@ -13,18 +13,18 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
 
     useImperativeHandle(ref, () => audioRef.current!, [audioRef]);
 
-    // Attach stream and play immediately – global AudioUnlocker ensures it works.
+    // Attach stream and start playing muted (browsers allow muted autoplay)
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio || !stream) return;
 
         audio.srcObject = stream;
-        audio.muted = false;
+        audio.muted = true;   // <-- muted autoplay always allowed
         audio.volume = 1.0;
 
-        audio.play().catch(err => {
-            console.warn(`[voice] Play error for ${peerId}:`, err.message);
-        });
+        audio.play().catch(err =>
+            console.warn(`[voice] Muted play error for ${peerId}:`, err.message)
+        );
     }, [stream, peerId]);
 
     // Speaking detection
