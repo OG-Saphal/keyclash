@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Lock, Zap } from 'lucide-react';
+import { Lock, LogIn, UserPlus } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -15,47 +15,67 @@ const MultiplayerAuthModal: React.FC<Props> = ({ open, onClose }) => {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center px-4 z-50"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4 z-50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
         >
           <motion.div
-            className="bg-bg-secondary border border-border rounded-2xl p-7 max-w-sm w-full flex flex-col items-center text-center gap-4"
-            initial={{ scale: 0.9, opacity: 0, y: 10 }}
+            className="bg-bg-secondary/95 backdrop-blur-md border border-white/10 rounded-2xl p-8 max-w-sm w-full flex flex-col items-center text-center gap-6 shadow-2xl shadow-black/30"
+            initial={{ scale: 0.92, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 10 }}
+            exit={{ scale: 0.92, opacity: 0, y: 20 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center relative">
-              <Zap className="w-7 h-7 text-accent" />
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-bg-secondary border border-border flex items-center justify-center">
-                <Lock className="w-3 h-3 text-text-muted" />
+            {/* Icon */}
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
+                <Lock className="w-7 h-7 text-accent drop-shadow-[0_0_8px_rgba(139,92,246,0.4)]" />
               </div>
+              <div className="absolute inset-0 rounded-full ring-1 ring-accent/30 scale-110 -z-10 animate-pulse mx-auto" />
             </div>
-            <div>
-              <h2 className="font-bold text-lg">Sign in to play Multiplayer</h2>
-              <p className="text-sm text-text-muted mt-1">
-                Racing against other typists in real time needs a free KeyClash account.
+
+            {/* Text */}
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-text-primary">Join the Race</h2>
+              <p className="text-sm text-text-muted leading-relaxed">
+                Compete against real typists. Create a free account to unlock multiplayer mode.
               </p>
             </div>
-            <div className="flex gap-3 w-full">
+
+            {/* Buttons - Explicitly centered, same height, solid purple */}
+            <div className="w-full space-y-3 flex flex-col items-center">
               <button
-                className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-medium"
-                onClick={() => { onClose(); navigate('/signup?redirect=/multiplayer'); }}
+                onClick={() => {
+                  onClose();
+                  navigate('/login?redirect=/multiplayer');
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 h-8 rounded-xl bg-accent-primary text-white font-semibold hover:brightness-110 transition-all shadow-lg shadow-accent/25 cursor-pointer"
               >
-                Sign Up
-              </button>
-              <button
-                className="flex-1 px-4 py-2 rounded-lg bg-accent text-bg-primary text-sm font-semibold"
-                onClick={() => { onClose(); navigate('/login?redirect=/multiplayer'); }}
-              >
+                <LogIn className="w-4 h-4" />
                 Log In
               </button>
+
+              <button
+                onClick={() => {
+                  onClose();
+                  navigate('/signup?redirect=/multiplayer');
+                }}
+                // bg-[rgb(var(--accent-darker))] creates a solid, true darker shade, NOT an opacity mix.
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 h-5 rounded-xl border-solid border border-accent-primary  text-accent-primary font-semibold hover:brightness-110 transition-all shadow-lg shadow-accent/25 cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                Create Account
+              </button>
             </div>
-            <button className="text-xs text-text-muted underline" onClick={onClose}>
-              Maybe later
+
+            {/* Not now */}
+            <button
+              onClick={onClose}
+              className="text-xs text-text-muted hover:text-text-primary transition-colors underline underline-offset-2 cursor-pointer mt-1"
+            >
+              Not now
             </button>
           </motion.div>
         </motion.div>

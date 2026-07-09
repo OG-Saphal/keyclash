@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { LogOut, Trophy, Crown } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
@@ -34,9 +35,9 @@ import Footer from '../../components/Footer';
 const MultiplayerResultsPage: React.FC = () => {
   const room = useMultiplayerStore((s) => s.currentRoom);
   const leaveRoom = useMultiplayerStore((s) => s.leaveRoom);
-  const voteReturnToLobby = useMultiplayerStore((s) => s.voteReturnToLobby); // 🆕 Part 5
+  const voteReturnToLobby = useMultiplayerStore((s) => s.voteReturnToLobby);
   const currentUser = useAuthStore((s) => s.user);
-  const theme = useThemeStore((s) => s.theme); // 🆕 Part 1
+  const theme = useThemeStore((s) => s.theme);
   const navigate = useNavigate();
 
   const [personalBest, setPersonalBest] = useState<number | null>(null);
@@ -52,11 +53,7 @@ const MultiplayerResultsPage: React.FC = () => {
       });
   }, [room]);
 
-  // 🆕 Part 4.6 — personal-best delta. Every multiplayer participant is
-  // already authenticated (guests are gated out before they can even
-  // connect — see MultiplayerAuthModal / useMultiplayerStore.connect()), so
-  // there's no separate "guest skips this" branch needed here; the null
-  // check below is just defensive.
+  // 🆕 Part 4.6 — personal-best delta.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
@@ -82,33 +79,29 @@ const MultiplayerResultsPage: React.FC = () => {
   const podium = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
 
-  // 🆕 Part 4.4 — micro-awards, computed purely from finalStats already on
-  // the DTO. "Comeback" (largest mid-race rank improvement) is deliberately
-  // NOT included: neither the server nor the client retains any per-tick
-  // progress HISTORY today (only the latest snapshot is ever kept), so there
-  // is no data to compute it from without adding new tracking — flagging
-  // this rather than fabricating a result. Say the word and I'll wire up a
-  // small progressHistory array server-side if you want this award.
-  const fastestFingers = leaderboard.reduce<typeof leaderboard[number] | null>(
-    (best, p) => ((p.finalStats?.wpm ?? 0) > (best?.finalStats?.wpm ?? 0) ? p : best),
-    leaderboard[0] ?? null
-  );
-
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header />
       <ModeTabBar />
-      <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full flex flex-col gap-6">
-        <h1 className="text-2xl font-bold">Race Results</h1>
+      <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full flex flex-col gap-5">
+
+        {/* Page Header */}
+        <div className="flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-accent-primary" />
+          <h1 className="text-2xl font-bold">Race Results</h1>
+        </div>
 
         {/* 🆕 Part 4.1 — podium for the top 3 */}
         {podium.length > 0 && (
-          <div className="flex items-end justify-center gap-4">
+          <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 p-6 flex items-end justify-center gap-6 shadow-sm">
             {[podium[1], podium[0], podium[2]].map((p, i) =>
               p ? (
                 <div key={p.userId} className={`flex flex-col items-center ${i === 1 ? 'order-2' : ''}`}>
+                  {/* 👑 Crown placed above the winner's candle */}
+                  {i === 1 && <Crown className="w-7 h-7 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />}
+
                   <div
-                    className="rounded-t-lg w-20 flex items-start justify-center pt-2 text-bg-primary font-bold"
+                    className="rounded-t-lg w-20 flex items-start justify-center pt-2 text-bg-primary font-bold text-lg"
                     style={{
                       height: i === 1 ? 96 : i === 0 ? 68 : 52,
                       background: i === 1 ? '#FFD24D' : i === 0 ? '#C0C0C0' : '#CD7F32',
@@ -117,10 +110,10 @@ const MultiplayerResultsPage: React.FC = () => {
                     {p.finalStats?.wpm ?? 0}
                   </div>
                   <span
-                    className="w-2 h-2 rounded-full mt-1"
+                    className="w-2.5 h-2.5 rounded-full mt-2"
                     style={{ background: resolvePlayerColor(p.colorId, theme) }}
                   />
-                  <span className="text-xs mt-1 truncate max-w-[5rem]">{p.username}</span>
+                  <span className="text-xs mt-1 font-medium truncate max-w-[5rem]">{p.username}</span>
                 </div>
               ) : (
                 <div key={`empty-podium-${i}`} className="w-20" />
@@ -130,47 +123,46 @@ const MultiplayerResultsPage: React.FC = () => {
         )}
 
         {/* Ranked list (4th+), plus per-player stat detail (Part 4.3) */}
-        <div className="bg-bg-secondary border border-border rounded-xl divide-y divide-border">
-          {rest.map((p, i) => (
-            <div key={p.userId} className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="w-6 text-text-muted font-mono">{i + 4}</span>
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: resolvePlayerColor(p.colorId, theme) }}
-                />
-                <span className="font-medium">{p.username}</span>
-                {p.finalStats?.dnf && <span className="text-xs text-text-muted">(left)</span>}
-                {p.finalStats?.outlierFlag && (
-                  <span className="text-xs text-yellow-500" title="Flagged for review — not blocked">⚑</span>
-                )}
+        {rest.length > 0 && (
+          <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 divide-y divide-bg-primary/20 shadow-sm overflow-hidden">
+            {rest.map((p, i) => (
+              <div key={p.userId} className="flex items-center justify-between px-5 py-3.5 hover:bg-bg-primary/20 transition-colors">
+                <div className="flex items-center gap-4">
+                  <span className="w-5 text-text-muted font-mono text-sm text-center">{i + 4}</span>
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: resolvePlayerColor(p.colorId, theme) }}
+                  />
+                  <span className="font-medium">{p.username}</span>
+                  {p.finalStats?.dnf && <span className="text-xs text-text-muted italic">(DNF)</span>}
+                  {p.finalStats?.outlierFlag && (
+                    <span className="text-xs text-yellow-500" title="Flagged for review — not blocked">⚑</span>
+                  )}
+                </div>
+                <div className="flex gap-4 text-sm font-mono">
+                  <span className="font-semibold text-accent-primary">{p.finalStats?.wpm ?? 0} wpm</span>
+                  <span className="text-text-muted">{p.finalStats?.accuracy ?? 0}% acc</span>
+                  <span className="text-text-muted hidden sm:block">{p.finalStats?.rawWpm ?? 0} raw</span>
+                </div>
               </div>
-              <div className="flex gap-4 text-sm font-mono">
-                <span>{p.finalStats?.wpm ?? 0} wpm</span>
-                <span className="text-text-muted">{p.finalStats?.accuracy ?? 0}% acc</span>
-                <span className="text-text-muted">{p.finalStats?.rawWpm ?? 0} raw</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* 🆕 Part 4.4 — micro-awards */}
-        {fastestFingers && (
-          <div className="flex gap-3 flex-wrap">
-            <span className="px-3 py-1 rounded-full bg-bg-secondary border border-border text-xs">
-              ⚡ Fastest fingers: {fastestFingers.username} ({fastestFingers.finalStats?.wpm ?? 0} wpm)
-            </span>
+            ))}
           </div>
         )}
 
-        {/* 🆕 Part 4.6 — personal-best delta */}
-        {personalBest !== null && myResult?.finalStats && !myResult.finalStats.dnf && (
-          <p className="text-sm text-text-muted">
-            {myResult.finalStats.wpm > personalBest
-              ? `New personal best! +${myResult.finalStats.wpm - personalBest} wpm over your previous best of ${personalBest}.`
-              : `${personalBest - myResult.finalStats.wpm} wpm below your personal best of ${personalBest}.`}
-          </p>
-        )}
+        {/* 🆕 Part 4.6 — personal-best delta only (micro-awards removed) */}
+        <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 p-5 shadow-sm flex justify-end gap-4">
+          {personalBest !== null && myResult?.finalStats && !myResult.finalStats.dnf && (
+            <p className="text-sm text-text-muted text-right">
+              {myResult.finalStats.wpm > personalBest ? (
+                <span className="text-green-400 font-medium">
+                  🎉 New PB! +{myResult.finalStats.wpm - personalBest} wpm
+                </span>
+              ) : (
+                <span>{personalBest - myResult.finalStats.wpm} wpm off your PB ({personalBest})</span>
+              )}
+            </p>
+          )}
+        </div>
 
         {/* ✨ Feature — spectators watching the results screen */}
         <SpectatorsList spectators={spectators} variant="panel" />
@@ -222,6 +214,7 @@ const MultiplayerResultsPage: React.FC = () => {
             </button>
           </div>
         )}
+
       </main>
       <Footer />
     </div>

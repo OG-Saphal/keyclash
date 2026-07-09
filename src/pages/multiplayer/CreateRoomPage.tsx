@@ -11,7 +11,7 @@ const Switch: React.FC<{ checked: boolean; onChange: () => void }> = ({ checked,
   <button
     type="button"
     onClick={onChange}
-    className={`relative w-11 h-6 rounded-full shrink-0 ${checked ? 'bg-accent-primary' : 'bg-bg-tertiary/60'
+    className={`relative w-11 h-6 rounded-full shrink-0 ${checked ? 'bg-accent-primary' : 'bg-bg-tertiary'
       } shadow-inner transition-colors duration-200`}
   >
     <span
@@ -27,7 +27,7 @@ const Card: React.FC<{ icon: React.ReactNode; title: string; children: React.Rea
   title,
   children,
 }) => (
-  <div className="bg-bg-secondary/80 rounded-lg p-5 flex flex-col gap-4 shadow-sm">
+  <div className="bg-bg-secondary rounded-lg p-5 flex flex-col gap-4 shadow-sm">
     <div className="flex items-center gap-2.5 text-xs font-semibold text-text-muted uppercase tracking-wider">
       <span className="text-accent-primary">{icon}</span>
       {title}
@@ -68,13 +68,13 @@ const CreateRoomPage: React.FC = () => {
     else setFormError('Could not create room. Try again.');
   };
 
-  // Input with subtle purple border
+  // Input with subtle purple border - Removed opacity modifier
   const inputClass =
-    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm';
+    'w-full bg-bg-secondary border border-accent-primary/30 rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm';
 
-  // Select with custom arrow – right padding leaves space for the icon
+  // Select with custom arrow – Removed opacity modifier
   const selectClass =
-    'w-full bg-bg-secondary/90 border border-accent-primary/30 rounded-lg pl-4 pr-10 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm appearance-none';
+    'w-full bg-bg-secondary border border-accent-primary/30 rounded-lg pl-4 pr-10 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 shadow-sm appearance-none';
 
   const min = 2;
   const max = 10;
@@ -85,7 +85,8 @@ const CreateRoomPage: React.FC = () => {
       <Header />
 
       <main className="flex-1 flex items-center justify-center px-6 py-6 overflow-hidden">
-        <div className="w-full max-w-4xl bg-bg-secondary/60 rounded-xl p-8 shadow-md flex flex-col gap-6">
+        {/* Container - Removed opacity modifier */}
+        <div className="w-full max-w-4xl bg-bg-secondary rounded-xl p-8 shadow-md flex flex-col gap-6">
           {/* Header */}
           <div className="flex items-center justify-between">
             <button

@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { useTypingStore } from '../../store/useTypingStore';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1 — drives the true-caret color override
+import { useThemeStore } from '../../store/useThemeStore';
 import { useTimer } from '../../hooks/useTimer';
 import Header from '../../components/Header';
-import Timer from '../../components/Timer'; // 🆕 Part 10 — HUD parity with solo mode
-import LiveStats from '../../components/LiveStats'; // 🆕 Part 10
-import WordProgress from '../../components/WordProgress'; // 🆕 Part 7/10 — words-mode live progress, shared with solo TypingView
+import Timer from '../../components/Timer';
+import LiveStats from '../../components/LiveStats';
+import WordProgress from '../../components/WordProgress';
 import WordDisplay from '../../components/WordDisplay';
 import PlayerProgressBar from '../../components/multiplayer/PlayerProgressBar';
 import PeerCursorOverlay from '../../components/multiplayer/PeerCursorOverlay'; // 🆕 Part 2
@@ -33,7 +33,7 @@ import SpectatorsList from '../../components/multiplayer/SpectatorsList'; // ✨
 const RacePage: React.FC = () => {
   const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.user);
-  const theme = useThemeStore((s) => s.theme); // 🆕 Part 1
+  const theme = useThemeStore((s) => s.theme);
   const room = useMultiplayerStore((s) => s.currentRoom);
   const raceWords = useMultiplayerStore((s) => s.raceWords);
   const raceStartTimestamp = useMultiplayerStore((s) => s.raceStartTimestamp ?? room?.startTimestamp ?? null);
@@ -47,20 +47,15 @@ const RacePage: React.FC = () => {
   const words = useTypingStore((s) => s.words);
   const currentWordIndex = useTypingStore((s) => s.currentWordIndex);
   const localWpm = useTypingStore((s) => s.metrics.wpm);
-  const localAccuracy = useTypingStore((s) => s.metrics.accuracy); // 🆕 Part 5
-  useTimer(); // existing hook — ticks the engine every second while running; UNTOUCHED (see Part 6 note below)
+  const localAccuracy = useTypingStore((s) => s.metrics.accuracy);
+  useTimer();
   const [countdown, setCountdown] = useState<number | null>(null);
-  // 🆕 Part 3.4 — briefly holds a "GO" flash open once the countdown hits
-  // zero, before switching to the race view. Purely presentational; the
-  // actual start still fires exactly at raceStartTimestamp regardless of
-  // whether this flash is showing.
   const [showGo, setShowGo] = useState(false);
   const wordsLoadedRef = useRef(false);
   const raceStartedRef = useRef(false);
   const finishSubmittedRef = useRef(false);
-  const timeoutFinishRef = useRef(false); // 🆕 Part 6 — guards the server-timeout-driven finishTest() call below
-  const wordDisplayContainerRef = useRef<HTMLDivElement>(null); // 🆕 Part 2 — overlay anchor
-  // 🆕 Part 3.2/3.3 — rank tracking for overtake arrows + mini-leaderboard
+  const timeoutFinishRef = useRef(false);
+  const wordDisplayContainerRef = useRef<HTMLDivElement>(null);
   const prevRankRef = useRef<Record<string, number>>({});
 
   // Load server race text into the existing engine, once, as soon as it arrives.
@@ -81,8 +76,8 @@ const RacePage: React.FC = () => {
         if (!raceStartedRef.current && wordsLoadedRef.current) {
           raceStartedRef.current = true;
           setShowGo(true);
-          setTimeout(() => setShowGo(false), 500); // brief GO flash, then reveal the race UI
-          startTest(); // start exactly on server time, not on first keystroke
+          setTimeout(() => setShowGo(false), 500);
+          startTest();
           beginProgressReporting();
         }
       } else {
@@ -189,11 +184,7 @@ const RacePage: React.FC = () => {
   const selfPlayer = activePlayers.find((p) => p.userId === currentUser.id); // 🆕 Part 1
   const totalWords = words.length;
 
-  // 🆕 Part 3.2/3.3 — rank derived fresh each render from live progress;
-  // rankDelta compares against the previous render's rank per user, no new
-  // server event needed. (Unchanged from before Part 5 — this only drives
-  // the ▲/▼ arrows on the race-track bars, not the new leaderboard, which
-  // has its own ranking rule — see RaceLeaderboard.tsx.)
+  // Rank tracking for overtake arrows
   const ranked = activePlayers
     .map((p) => {
       const isSelf = p.userId === currentUser.id;
@@ -216,7 +207,7 @@ const RacePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header />
-      <main className="flex-1 flex flex-col items-center justify-center px-4 gap-6">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-6 overflow-hidden">
         <AnimatePresence mode="wait">
           {showCountdown ? (
             <motion.div
@@ -246,91 +237,101 @@ const RacePage: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2 }}
-              className="w-full max-w-4xl flex flex-col md:flex-row gap-4"
+              className="w-full max-w-6xl flex flex-col lg:flex-row gap-4"
             >
-              <div className="flex-1 flex flex-col gap-6">
+              {/* Left column: race HUD, progress bars, typing area */}
+              <div className="flex-1 flex flex-col gap-4 min-h-0">
                 {waitingForOthers && (
-                  <div className="text-center text-sm text-text-secondary bg-bg-secondary border border-border rounded-lg py-2 px-4">
+                  <div className="text-center text-sm text-text-secondary bg-bg-secondary border border-border rounded-lg py-2 px-4 shrink-0">
                     You finished! Waiting for the other racers to finish…
                   </div>
                 )}
+
                 {/* 🆕 Part 10 — same HUD solo mode shows: countdown timer
                     (time mode) or word progress (words mode, Part 7) plus
                     live wpm/raw/accuracy, sourced straight from
                     useTypingStore.metrics like solo's TypingView does.
                     Rendered ABOVE the race-specific UI (leaderboard, peer
                     cursors), never replacing it. */}
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center shrink-0">
                   {room.settings.mode === 'time' ? <Timer /> : <WordProgress />}
                   <LiveStats />
                 </div>
-                <div className="bg-bg-secondary border border-border rounded-xl p-4 flex flex-col gap-2">
-                  {activePlayers.map((p) => {
-                    const isSelf = p.userId === currentUser.id;
-                    const live = isSelf
-                      ? { wordIndex: currentWordIndex, wpm: localWpm }
-                      : otherPlayersProgress[p.userId];
-                    return (
-                      <PlayerProgressBar
-                        key={p.userId}
-                        username={p.username}
-                        avatarUrl={p.avatarUrl}
-                        colorId={p.colorId}
-                        isSelf={isSelf}
-                        wordIndex={live?.wordIndex ?? 0}
-                        totalWords={totalWords}
-                        wpm={live?.wpm ?? 0}
-                        connection={p.connection}
-                        rankDelta={rankDeltas[p.userId] ?? 0}
-                      />
-                    );
-                  })}
-                </div>
-                {/* 🆕 Part 1 — the --text-cursor override below repurposes
-                    WordDisplay's own existing blinking caret as the spec's
-                    "true local caret": white in dark mode, black in light
-                    mode, still tracking actual typing position exactly as
-                    before.
-                    🐛 FIX (raw/synced caret double-up) — WordDisplay now
-                    also takes `hideCaretWhenSynced`, which suppresses its
-                    raw caret whenever it would land at the exact same
-                    position as SelfCursorOverlay's frozen cursor below (no
-                    uncorrected mistake in the current word). Solo mode
-                    never passes this prop, so its caret behavior is
-                    unaffected. */}
-                <div
-                  className="relative"
-                  ref={wordDisplayContainerRef}
-                  style={{ '--text-cursor': theme === 'dark' ? '255 255 255' : '0 0 0' } as React.CSSProperties}
-                >
-                  <WordDisplay hideCaretWhenSynced />
-                  <PeerCursorOverlay
-                    containerRef={wordDisplayContainerRef}
-                    players={activePlayers}
-                    selfUserId={currentUser.id}
-                  />
-                  {/* 🆕 Part 1 — local player's own frozen colored progress cursor */}
-                  {selfPlayer && (
-                    <SelfCursorOverlay containerRef={wordDisplayContainerRef} colorId={selfPlayer.colorId} />
-                  )}
+
+                {/* Race Cockpit Card */}
+                <div className="bg-bg-secondary/80 rounded-xl p-5 border border-bg-primary/20 flex flex-col gap-5 flex-1 overflow-hidden shadow-sm">
+                  {/* Player Progress Track */}
+                  <div className="flex flex-col gap-2">
+                    {activePlayers.map((p) => {
+                      const isSelf = p.userId === currentUser.id;
+                      const live = isSelf
+                        ? { wordIndex: currentWordIndex, wpm: localWpm }
+                        : otherPlayersProgress[p.userId];
+                      return (
+                        <PlayerProgressBar
+                          key={p.userId}
+                          username={p.username}
+                          avatarUrl={p.avatarUrl}
+                          colorId={p.colorId}
+                          isSelf={isSelf}
+                          wordIndex={live?.wordIndex ?? 0}
+                          totalWords={totalWords}
+                          wpm={live?.wpm ?? 0}
+                          connection={p.connection}
+                          rankDelta={rankDeltas[p.userId] ?? 0}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  <hr className="border-bg-primary/20" />
+
+                  {/* Typing Area with Cursor Overlays */}
+                  <div
+                    className="relative bg-bg-primary/30 rounded-lg p-4 flex-1 min-h-[120px]"
+                    ref={wordDisplayContainerRef}
+                    style={{ '--text-cursor': theme === 'dark' ? '255 255 255' : '0 0 0' } as React.CSSProperties}
+                  >
+                    {/* 🆕 Part 1 — the --text-cursor override below repurposes
+                        WordDisplay's own existing blinking caret as the spec's
+                        "true local caret": white in dark mode, black in light
+                        mode, still tracking actual typing position exactly as
+                        before.
+                        🐛 FIX (raw/synced caret double-up) — WordDisplay now
+                        also takes `hideCaretWhenSynced`, which suppresses its
+                        raw caret whenever it would land at the exact same
+                        position as SelfCursorOverlay's frozen cursor below (no
+                        uncorrected mistake in the current word). Solo mode
+                        never passes this prop, so its caret behavior is
+                        unaffected. */}
+                    <WordDisplay hideCaretWhenSynced />
+                    <PeerCursorOverlay
+                      containerRef={wordDisplayContainerRef}
+                      players={activePlayers}
+                      selfUserId={currentUser.id}
+                    />
+                    {selfPlayer && (
+                      <SelfCursorOverlay containerRef={wordDisplayContainerRef} colorId={selfPlayer.colorId} />
+                    )}
+                  </div>
                 </div>
               </div>
-              {/* 🆕 Part 5 — full leaderboard overhaul (avatar/name/live
-                  stats, per-player placement tagged the moment they finish).
-                  Replaces the old compact "Standings" panel that lived
-                  inline here. */}
-              <div className="flex flex-col gap-3">
-                <RaceLeaderboard
-                  players={activePlayers}
-                  currentUserId={currentUser.id}
-                  localWordIndex={currentWordIndex}
-                  localWpm={localWpm}
-                  localAccuracy={localAccuracy}
-                  otherPlayersProgress={otherPlayersProgress}
-                />
-                {/* ✨ Feature — spectators watching the race, real-time via
-                    the same room:updated broadcasts the leaderboard uses. */}
-                <SpectatorsList spectators={spectators} variant="inline" />
+
+              {/* Right column: Leaderboard + Spectators */}
+              <div className="w-full lg:w-80 shrink-0">
+                <div className="sticky top-4 flex flex-col gap-3">
+                  <RaceLeaderboard
+                    players={activePlayers}
+                    currentUserId={currentUser.id}
+                    localWordIndex={currentWordIndex}
+                    localWpm={localWpm}
+                    localAccuracy={localAccuracy}
+                    otherPlayersProgress={otherPlayersProgress}
+                  />
+                  {/* ✨ Feature — spectators watching the race, real-time via
+                      the same room:updated broadcasts the leaderboard uses. */}
+                  <SpectatorsList spectators={spectators} variant="inline" />
+                </div>
               </div>
             </motion.div>
           )}
