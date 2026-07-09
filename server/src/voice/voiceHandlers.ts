@@ -29,6 +29,20 @@ export function registerVoiceHandlers(io: Server, socket: Socket) {
             return;
         }
 
+        // Fix for RCA §3.5 — `disconnect` reads socket.data.userId to know who
+        // to clean up, but nothing in this file ever assigned it. Whether it
+        // was set depended entirely on code outside this file (presumably a
+        // connection-level auth middleware), and if that assignment ever
+        // raced with or preceded a bad disconnect, removeUserFromAllVoiceRooms
+        // was silently skipped, leaving a "ghost" entry in the room's roster
+        // forever. Every later joiner would then try to connect to that
+        // ghost, sending an offer to a room with no listening socket.
+        //
+        // Setting it explicitly here — at the point voice identity is
+        // actually established for this socket — guarantees disconnect
+        // cleanup always has what it needs, independent of upstream wiring.
+        socket.data.userId = userId;
+
         addUserToVoiceRoom(roomId, userId);
         const roster = getVoiceUsers(roomId);
         console.log(`[voice] roster after join:`, roster);

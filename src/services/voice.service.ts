@@ -1,8 +1,12 @@
+// voice.service.ts
 import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import { useAuthStore } from '../store/useAuthStore';
 import type { Socket } from 'socket.io-client';
+
+// Enable/disable debug logs
+const DEBUG_VOICE = true;
 
 const ICE_SERVERS = {
     iceServers: [
@@ -46,7 +50,6 @@ class VoiceService {
     private wasInVoice = false;
     private joined = false;
     private disconnectedWhileInVoice = false;
-    // 👇 fix: buffer ICE candidates that arrive before setRemoteDescription resolves
     private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
 
     private isPolite(peerId: string): boolean {
@@ -65,10 +68,9 @@ class VoiceService {
         this.socket.on('voice:mute-state', this.handleMuteState.bind(this));
         this.socket.on('voice:roster', this.handleRoster.bind(this));
 
-        // Disconnect → keep session alive, but clean up temporarily
         this.socket.on('disconnect', () => {
             if (this.wasInVoice) {
-                console.log('[voice] Socket disconnected – cleaning up temporarily');
+                if (DEBUG_VOICE) console.log('[voice] 🔌 Socket disconnected – cleaning up temporarily');
                 this.peerConnections.forEach(pc => pc.close());
                 this.peerConnections.clear();
                 this.makingOffer.clear();
@@ -80,7 +82,6 @@ class VoiceService {
             }
         });
 
-        // Reconnect → rejoin only if still in same room
         this.socket.on('connect', () => {
             if (
                 this.disconnectedWhileInVoice &&
@@ -89,7 +90,7 @@ class VoiceService {
                 this.userId &&
                 useMultiplayerStore.getState().currentRoom?.id === this.roomId
             ) {
-                console.log('[voice] Reconnected – rejoining voice');
+                if (DEBUG_VOICE) console.log('[voice] 🔄 Reconnected – rejoining voice');
                 this.rejoinVoice();
                 this.disconnectedWhileInVoice = false;
             }
@@ -102,9 +103,8 @@ class VoiceService {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
 
-        // Always start fresh when joining
         if (this.joined || this.wasInVoice) {
-            console.log('[voice] Forcing clean start before join');
+            if (DEBUG_VOICE) console.log('[voice] ⚠️ Forcing clean start before join');
             this.leaveVoiceInternal();
         }
 
@@ -113,6 +113,8 @@ class VoiceService {
         this.userId = user.id;
         this.roomId = room.id;
         this.joined = true;
+
+        if (DEBUG_VOICE) console.log('[voice] 🟢 Joining voice room', { roomId: this.roomId, userId: this.userId });
 
         await this.ensureSocketAndListeners();
 
@@ -123,6 +125,7 @@ class VoiceService {
             useVoiceStore.getState().setMuted(false);
             this.wasInVoice = true;
             this.disconnectedWhileInVoice = false;
+            if (DEBUG_VOICE) console.log('[voice] 🎤 Local microphone acquired');
         } catch (err) {
             console.error('[voice] Failed to get mic:', err);
             this.joined = false;
@@ -130,6 +133,7 @@ class VoiceService {
         }
 
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
+            if (DEBUG_VOICE) console.log('[voice] 📋 Received roster:', roster);
             roster.forEach(peerId => {
                 if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
@@ -144,12 +148,13 @@ class VoiceService {
 
     private leaveVoiceInternal() {
         if (!this.userId) return;
+        if (DEBUG_VOICE) console.log('[voice] 🔴 Leaving voice room', { userId: this.userId });
         this.socket?.emit('voice:leave', this.userId);
 
         this.peerConnections.forEach(pc => pc.close());
         this.peerConnections.clear();
         this.makingOffer.clear();
-        this.pendingCandidates.clear(); // 👈 fix
+        this.pendingCandidates.clear();
 
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
@@ -171,10 +176,16 @@ class VoiceService {
         this.localStream.getAudioTracks().forEach(track => (track.enabled = !muted));
         store.setMuted(muted);
         this.socket?.emit('voice:mute-state', { userId: this.userId, muted });
+        if (DEBUG_VOICE) console.log(`[voice] 🎤 Mute toggled: ${muted ? '🔇 MUTED' : '🔊 UNMUTED'}`);
     }
 
     private createPeerConnection(peerId: string, isInitiator: boolean) {
-        if (this.peerConnections.has(peerId)) return;
+        if (this.peerConnections.has(peerId)) {
+            if (DEBUG_VOICE) console.log(`[voice] ⏭️ Peer ${peerId} already connected, skipping`);
+            return;
+        }
+
+        if (DEBUG_VOICE) console.log(`[voice] 📞 Creating peer connection for ${peerId}`, { isInitiator });
 
         const pc = new RTCPeerConnection(ICE_SERVERS);
         this.peerConnections.set(peerId, pc);
@@ -187,6 +198,7 @@ class VoiceService {
             const remoteStream = new MediaStream();
             remoteStream.addTrack(event.track);
             useVoiceStore.getState().addPeerStream(peerId, remoteStream);
+            if (DEBUG_VOICE) console.log(`[voice] 📥 Received track for peer ${peerId}`);
         };
 
         pc.onicecandidate = (event) => {
@@ -196,13 +208,20 @@ class VoiceService {
                     targetUserId: peerId,
                     candidate: event.candidate,
                 });
+                if (DEBUG_VOICE) console.log(`[voice] ❄️ ICE candidate sent to ${peerId}`);
             }
         };
 
         pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            const state = pc.connectionState;
+            if (DEBUG_VOICE) console.log(`[voice] 🔗 Peer ${peerId} connection state: ${state}`);
+            if (state === 'failed' || state === 'disconnected') {
                 this.removePeer(peerId);
             }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            if (DEBUG_VOICE) console.log(`[voice] ❄️ Peer ${peerId} ICE state: ${pc.iceConnectionState}`);
         };
 
         if (isInitiator) {
@@ -220,23 +239,28 @@ class VoiceService {
                 targetUserId: peerId,
                 sdp: offer,
             });
+            if (DEBUG_VOICE) console.log(`[voice] 📤 Offer sent to ${peerId}`);
         } catch (err) {
             console.error('Error creating offer', err);
             this.makingOffer.delete(peerId);
         }
     }
 
-    private handlePeerJoined(_userId: string) {
-        // intentionally empty
+    private handlePeerJoined(userId: string) {
+        if (!userId || userId === this.userId) return;
+        if (this.peerConnections.has(userId)) return;
+        if (DEBUG_VOICE) console.log(`[voice] 👤 Peer joined: ${userId}`);
+        this.createPeerConnection(userId, true);
     }
 
     private handlePeerLeft(userId: string) {
+        if (DEBUG_VOICE) console.log(`[voice] 🚪 Peer left: ${userId}`);
         this.removePeer(userId);
     }
 
     private removePeer(userId: string) {
         this.makingOffer.delete(userId);
-        this.pendingCandidates.delete(userId); // 👈 fix: don't leak stale candidates
+        this.pendingCandidates.delete(userId);
         const pc = this.peerConnections.get(userId);
         if (pc) {
             pc.close();
@@ -256,11 +280,14 @@ class VoiceService {
                 console.error(`[voice] Failed to flush queued candidate for ${peerId}:`, err);
             }
         }
+        if (DEBUG_VOICE) console.log(`[voice] 🧹 Flushed ${queued.length} queued candidates for ${peerId}`);
     }
 
     private async handleSignal(payload: any) {
         const { type, fromUserId, sdp, candidate } = payload;
         if (!fromUserId) return;
+
+        if (DEBUG_VOICE) console.log(`[voice] 📡 Signal from ${fromUserId}`, { type, sdp: !!sdp, candidate: !!candidate });
 
         let pc = this.peerConnections.get(fromUserId);
 
@@ -268,7 +295,7 @@ class VoiceService {
             if (this.makingOffer.has(fromUserId)) {
                 if (this.isPolite(fromUserId)) {
                     this.makingOffer.delete(fromUserId);
-                    this.pendingCandidates.delete(fromUserId); // 👈 fix: drop candidates for the connection we're about to discard
+                    this.pendingCandidates.delete(fromUserId);
                     if (pc) {
                         pc.close();
                         this.peerConnections.delete(fromUserId);
@@ -276,6 +303,7 @@ class VoiceService {
                     this.createPeerConnection(fromUserId, false);
                     pc = this.peerConnections.get(fromUserId);
                 } else {
+                    if (DEBUG_VOICE) console.log(`[voice] 🛑 Ignoring duplicate offer from ${fromUserId}`);
                     return;
                 }
             }
@@ -295,7 +323,7 @@ class VoiceService {
         try {
             if (type === 'offer') {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-                await this.flushPendingCandidates(fromUserId, pc); // 👈 fix
+                await this.flushPendingCandidates(fromUserId, pc);
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 this.socket?.emit('voice:signal', {
@@ -303,19 +331,20 @@ class VoiceService {
                     targetUserId: fromUserId,
                     sdp: answer,
                 });
+                if (DEBUG_VOICE) console.log(`[voice] 📤 Answer sent to ${fromUserId}`);
             } else if (type === 'answer') {
                 this.makingOffer.delete(fromUserId);
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-                await this.flushPendingCandidates(fromUserId, pc); // 👈 fix
+                await this.flushPendingCandidates(fromUserId, pc);
+                if (DEBUG_VOICE) console.log(`[voice] 📥 Remote description set for ${fromUserId}`);
             } else if (type === 'ice-candidate') {
-                // 👇 fix: remote description may not be set yet (network latency on deployed hosts,
-                // unlike near-zero-latency localhost) — queue instead of dropping via swallowed error
                 if (pc.remoteDescription && pc.remoteDescription.type) {
                     await pc.addIceCandidate(new RTCIceCandidate(candidate));
                 } else {
                     const queue = this.pendingCandidates.get(fromUserId) || [];
                     queue.push(candidate);
                     this.pendingCandidates.set(fromUserId, queue);
+                    if (DEBUG_VOICE) console.log(`[voice] ⏳ Queued ICE candidate for ${fromUserId} (remote desc not set)`);
                 }
             }
         } catch (err) {
@@ -325,12 +354,14 @@ class VoiceService {
 
     private handleMuteState = (payload: { userId: string; muted: boolean }) => {
         useVoiceStore.getState().setPeerMuted(payload.userId, payload.muted);
+        if (DEBUG_VOICE) console.log(`[voice] ${payload.muted ? '🔇' : '🔊'} Peer ${payload.userId} ${payload.muted ? 'muted' : 'unmuted'}`);
     };
 
     private handleRoster = (payload: { users: string[] }) => {
         const currentPeers = Array.from(this.peerConnections.keys());
         currentPeers.forEach(peerId => {
             if (!payload.users.includes(peerId)) {
+                if (DEBUG_VOICE) console.log(`[voice] 🧹 Roster cleanup: removing ${peerId}`);
                 this.removePeer(peerId);
             }
         });
@@ -338,9 +369,8 @@ class VoiceService {
 
     private async rejoinVoice() {
         if (!this.roomId || !this.userId) return;
-        console.log('[voice] Rejoining voice – reacquiring mic');
+        if (DEBUG_VOICE) console.log('[voice] 🔄 Rejoining voice – reacquiring mic');
 
-        // ✅ CRITICAL: re‑get microphone after disconnect
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this.localStream.getAudioTracks().forEach(track => (track.enabled = true));
@@ -348,7 +378,6 @@ class VoiceService {
             useVoiceStore.getState().setMuted(false);
         } catch (err) {
             console.error('[voice] Failed to re‑get mic on rejoin:', err);
-            // Even without mic, still rejoin as listener
             this.localStream = null;
         }
 
@@ -356,7 +385,6 @@ class VoiceService {
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             const rosterSet = new Set(roster.filter(id => id !== this.userId));
 
-            // Remove peers no longer in the room
             for (const [peerId, pc] of this.peerConnections) {
                 if (!rosterSet.has(peerId)) {
                     pc.close();
@@ -366,7 +394,6 @@ class VoiceService {
             }
             this.makingOffer.clear();
 
-            // Create connections for new peers (or all if we cleared everything)
             roster.forEach(peerId => {
                 if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);

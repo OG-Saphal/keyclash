@@ -1,3 +1,4 @@
+// App.tsx
 import React, { useEffect } from 'react';
 import FriendsPage from './pages/FriendsPage';
 import FriendProfilePage from './pages/FriendProfilePage';
@@ -6,6 +7,9 @@ import FriendsSidebar from './components/friends/FriendsSidebar';
 import InviteNotification from './components/multiplayer/InviteNotification';
 import VoiceChatPanel from './components/multiplayer/VoiceChatPanel';
 import AudioUnlocker from './components/AudioUnlocker';
+
+// 👇 Import the debug hook (you will create this file)
+import { useVoiceDebug } from './hooks/useVoiceDebug';
 
 import {
   HashRouter,
@@ -156,6 +160,10 @@ const App: React.FC = () => {
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  // 👇 Enable voice debug logging (store subscription)
+  useVoiceDebug();
+
   return (
     <HashRouter>
       {/* These components are always mounted and driven by state */}

@@ -1,5 +1,8 @@
+// VoicePeerAudio.tsx
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useVoiceStore } from '../../store/useVoiceStore';
+
+const DEBUG_VOICE = true;
 
 interface Props {
     peerId: string;
@@ -14,21 +17,48 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
 
     useImperativeHandle(ref, () => audioRef.current!, [audioRef]);
 
-    // Attach stream. Muted only if audio hasn't been unlocked yet.
+    // 1) Attach stream only when the stream itself changes
     useEffect(() => {
         const audio = audioRef.current;
-        if (!audio || !stream) return;
+        if (!audio) return;
 
-        audio.srcObject = stream;
-        audio.muted = !audioUnlocked;   // 👈 the fix
-        audio.volume = 1.0;
+        if (audio.srcObject !== stream) {
+            audio.srcObject = stream;
+            audio.volume = 1.0;
+            if (DEBUG_VOICE) console.log(`[voice] 🔊 Attached stream for peer ${peerId}`);
+            audio.play().catch((err) => {
+                if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                    console.warn(`[voice] play error for ${peerId}:`, err.message);
+                }
+            });
+        }
 
-        audio.play().catch(err =>
-            console.warn(`[voice] play error for ${peerId}:`, err.message)
-        );
-    }, [stream, peerId, audioUnlocked]); // re-runs when unlocked
+        return () => {
+            if (audio.srcObject === stream) {
+                audio.srcObject = null;
+                if (DEBUG_VOICE) console.log(`[voice] 🔇 Detached stream for peer ${peerId}`);
+            }
+        };
+    }, [stream, peerId]);
 
-    // Speaking detection (unchanged)
+    // 2) Handle mute/unmute without resetting srcObject
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        audio.muted = !audioUnlocked;
+        if (DEBUG_VOICE) console.log(`[voice] ${audioUnlocked ? '🔓' : '🔒'} Peer ${peerId} ${audioUnlocked ? 'unmuted' : 'muted'}`);
+
+        if (audioUnlocked && audio.paused) {
+            audio.play().catch((err) => {
+                if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                    console.warn(`[voice] retry play for ${peerId}:`, err.message);
+                }
+            });
+        }
+    }, [audioUnlocked, peerId]);
+
+    // 3) Speaking detection with debug logs
     useEffect(() => {
         if (!stream) return;
         let ctx: AudioContext | null = null;
@@ -57,6 +87,7 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
                         if (speaking) {
                             useVoiceStore.getState().setLastActiveSpeaker(peerId);
                         }
+                        if (DEBUG_VOICE) console.log(`[voice] 🗣️ Peer ${peerId} ${speaking ? 'STARTED' : 'STOPPED'} speaking`);
                     }
                     animFrameRef.current = requestAnimationFrame(detect);
                 };

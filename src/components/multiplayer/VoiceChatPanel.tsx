@@ -1,3 +1,4 @@
+// VoiceChatPanel.tsx
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
@@ -5,6 +6,8 @@ import { voiceService } from '../../services/voice.service';
 import VoicePeerAudio from './VoicePeerAudio';
 import { Mic, MicOff } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
+
+const DEBUG_VOICE = true;
 
 const VoiceChatPanel: React.FC = () => {
     const currentRoom = useMultiplayerStore((s) => s.currentRoom);
@@ -34,7 +37,7 @@ const VoiceChatPanel: React.FC = () => {
         return map;
     }, [currentRoom?.players]);
 
-    // Join/leave voice strictly on room identity change (not on room content updates)
+    // Join/leave voice strictly on room identity change
     useEffect(() => {
         const roomId = currentRoom?.id;
 
@@ -47,9 +50,9 @@ const VoiceChatPanel: React.FC = () => {
         return () => {
             voiceService.leaveVoice();
         };
-    }, [currentRoom?.id]); // ✅ fixed: removed currentRoom?.players
+    }, [currentRoom?.id]);
 
-    // Local speaking detection (unchanged)
+    // Local speaking detection with debug log
     useEffect(() => {
         if (!localStream) return;
         let ctx: AudioContext | null = null;
@@ -73,6 +76,7 @@ const VoiceChatPanel: React.FC = () => {
                     speaking = isNowSpeaking;
                     setLocalSpeaking(speaking);
                     if (speaking) setLastActiveSpeaker('local');
+                    if (DEBUG_VOICE) console.log(`[voice] 🗣️ YOU ${speaking ? 'STARTED' : 'STOPPED'} speaking`);
                 }
                 localAnimFrameRef.current = requestAnimationFrame(detect);
             };
@@ -88,9 +92,16 @@ const VoiceChatPanel: React.FC = () => {
 
     const handleToggleMic = () => voiceService.toggleMute();
 
+    // Log render count / peer count
+    useEffect(() => {
+        if (DEBUG_VOICE) {
+            console.log(`[voice] 🖥️ VoiceChatPanel rendered, ${Object.keys(peers).length} peers`);
+        }
+    }, [peers]);
+
     if (!currentRoom || !localStream) return null;
 
-    // Speaker avatar (unchanged)
+    // Speaker avatar
     let speakerAvatarUrl: string | undefined;
     let speakerAltText = '';
     let isCurrentlySpeaking = false;
