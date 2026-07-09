@@ -1,4 +1,4 @@
-import { getSocket } from './multiplayer.service';
+import { connectMultiplayerSocket } from './multiplayer.service'; //  👈 use connect, not getSocket
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -27,7 +27,6 @@ const ICE_SERVERS = {
             username: 'af8144af8e6b1b9e714925c8',
             credential: 'JOnxdfLjdjSL01MU',
         },
-        // Free fallback
         {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
@@ -45,7 +44,7 @@ class VoiceService {
     private listenersSetup = false;
     private makingOffer: Set<string> = new Set();
     private wasInVoice = false;
-    private joined = false; // Prevents duplicate join calls
+    private joined = false;
 
     private isPolite(peerId: string): boolean {
         return this.userId! < peerId;
@@ -53,15 +52,11 @@ class VoiceService {
 
     constructor() { }
 
-    private ensureSocketAndListeners() {
+    private async ensureSocketAndListeners() {
         if (this.listenersSetup) return;
 
-        try {
-            this.socket = getSocket();
-        } catch (e) {
-            console.error('Cannot get multiplayer socket – is it connected?', e);
-            throw e;
-        }
+        // This will wait for the socket to be fully connected
+        this.socket = await connectMultiplayerSocket();
 
         this.socket.on('voice:peer-joined', this.handlePeerJoined.bind(this));
         this.socket.on('voice:peer-left', this.handlePeerLeft.bind(this));
@@ -82,15 +77,12 @@ class VoiceService {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
 
-        // If already joined the same room, do nothing.
         if (this.joined && this.roomId === room?.id) return;
-
         if (!room || !user) {
             console.warn('[voice-client] cannot join - no room or user');
             return;
         }
 
-        // If we were joined to a different room, leave first.
         if (this.joined) {
             this.leaveVoice();
         }
@@ -100,7 +92,8 @@ class VoiceService {
         this.joined = true;
         this.wasInVoice = true;
 
-        this.ensureSocketAndListeners();
+        // Await the socket connection before doing anything else
+        await this.ensureSocketAndListeners();
 
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
