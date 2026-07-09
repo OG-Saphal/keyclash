@@ -37,6 +37,7 @@ const VoiceChatPanel: React.FC = () => {
 
     // Join/leave voice based on room
     useEffect(() => {
+        console.log('[voice-panel] currentRoom changed:', currentRoom?.id);
         if (currentRoom?.id) {
             voiceService.joinVoice();
         } else {

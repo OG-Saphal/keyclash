@@ -1,4 +1,4 @@
-import { connectMultiplayerSocket } from './multiplayer.service'; //  👈 use connect, not getSocket
+import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -55,8 +55,14 @@ class VoiceService {
     private async ensureSocketAndListeners() {
         if (this.listenersSetup) return;
 
-        // This will wait for the socket to be fully connected
-        this.socket = await connectMultiplayerSocket();
+        console.log('[voice] Waiting for multiplayer socket...');
+        try {
+            this.socket = await connectMultiplayerSocket();
+            console.log('[voice] Socket connected:', this.socket.connected);
+        } catch (e) {
+            console.error('[voice] Failed to connect socket:', e);
+            throw e;
+        }
 
         this.socket.on('voice:peer-joined', this.handlePeerJoined.bind(this));
         this.socket.on('voice:peer-left', this.handlePeerLeft.bind(this));
@@ -66,6 +72,7 @@ class VoiceService {
 
         this.socket.on('connect', () => {
             if (this.wasInVoice && this.roomId && this.userId) {
+                console.log('[voice] Reconnecting after socket reconnect');
                 this.rejoinVoice();
             }
         });
@@ -76,14 +83,19 @@ class VoiceService {
     async joinVoice() {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
+        console.log('[voice] joinVoice called, room:', room, 'user:', user);
 
-        if (this.joined && this.roomId === room?.id) return;
+        if (this.joined && this.roomId === room?.id) {
+            console.log('[voice] Already joined this room, skipping');
+            return;
+        }
         if (!room || !user) {
-            console.warn('[voice-client] cannot join - no room or user');
+            console.warn('[voice] Cannot join - no room or user');
             return;
         }
 
         if (this.joined) {
+            console.log('[voice] Leaving previous room before joining new one');
             this.leaveVoice();
         }
 
@@ -92,20 +104,21 @@ class VoiceService {
         this.joined = true;
         this.wasInVoice = true;
 
-        // Await the socket connection before doing anything else
         await this.ensureSocketAndListeners();
 
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('[voice] Local stream obtained');
             useVoiceStore.getState().setLocalStream(this.localStream);
         } catch (err) {
-            console.error('Failed to get mic', err);
+            console.error('[voice] Failed to get mic:', err);
             this.joined = false;
             return;
         }
 
+        console.log('[voice] Emitting voice:join:', { userId: this.userId, roomId: this.roomId });
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
-            console.log('[voice-client] roster received:', roster);
+            console.log('[voice] Roster received:', roster);
             roster.forEach(peerId => {
                 if (peerId !== this.userId) {
                     this.createPeerConnection(peerId, true);
@@ -115,6 +128,7 @@ class VoiceService {
     }
 
     leaveVoice() {
+        console.log('[voice] leaveVoice called');
         this.joined = false;
         this.wasInVoice = false;
         if (!this.userId) return;
