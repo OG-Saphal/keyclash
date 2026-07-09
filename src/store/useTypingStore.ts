@@ -162,22 +162,63 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     if (value.endsWith(' ')) {
       if (value.trim() === '') return;
 
-      const updatedWords = [...words];
       const typedWord = value.trim();
+
+      // 🐛 FIX (Bug #3) — previously ANY trailing space advanced to the
+      // next word immediately, even if the current word was only
+      // partially typed. That's a real gap in the shared engine (it
+      // happens to go unnoticed in solo play since most users only press
+      // space after finishing a word), but it's especially disruptive in
+      // multiplayer: an accidental/early space mid-word finalizes it as
+      // incorrect and desyncs the player's race position from what they
+      // intended to type. Guard: ignore the space entirely — don't
+      // finalize the word, don't advance, don't touch state — until the
+      // word has actually been fully typed (typed length >= word length).
+      // The stray trailing space is simply dropped; since the hidden
+      // <input> is controlled by `currentInput`, it disappears from the
+      // DOM on next render along with the rest of state staying put.
+      const expectedLen = words[currentWordIndex].chars.length;
+      if (typedWord.length < expectedLen) {
+        return;
+      }
+
+      const updatedWords = [...words];
 
       updatedWords[currentWordIndex] = finalizeWord(
         computeWordChars(updatedWords[currentWordIndex], typedWord)
       );
 
-      const nextIndex = currentWordIndex + 1;
+      // 🐛 FIX (Bug #4 — space advances the sync cursor even on a mistyped
+      // word) — reaching full length used to be enough on its own to
+      // advance currentWordIndex once space was pressed. A full-length
+      // word with even one wrong character (e.g. "teh" instead of "the")
+      // still moved the player's progress forward — the typo was recorded
+      // (isCorrect: false, excluded from WPM) but nothing stopped the
+      // advance. currentWordIndex IS the sync/frozen word-level position
+      // (it's what multiplayer race progress reporting reads via
+      // useMultiplayerStore), so it must only advance on a fully correct
+      // word — the same guarantee the character-level frozen cursor in
+      // utils/multiplayerCursor.ts's getFrozenOffsetInWord already gives
+      // within a word. If the word isn't an exact match, drop the space
+      // exactly like the mid-word case above (no advance, no finish,
+      // state untouched) — the player must backspace and fix every
+      // mistake before the sync cursor will move past that word. (This
+      // also subsumes what used to be a last-word-only correctness check
+      // here, since it's now enforced for every word.)
+      if (!updatedWords[currentWordIndex].isCorrect) {
+        return;
+      }
 
-      if (mode === 'words' && nextIndex >= updatedWords.length) {
+      const nextIndex = currentWordIndex + 1;
+      const reachedEnd = nextIndex >= updatedWords.length;
+
+      if (mode === 'words' && reachedEnd) {
         set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
         get().finishTest();
         return;
       }
 
-      if (mode === 'time' && nextIndex >= updatedWords.length) {
+      if (mode === 'time' && reachedEnd) {
         set({ words: updatedWords, currentInput: '', currentWordIndex: nextIndex });
         get().finishTest();
         return;
@@ -225,8 +266,19 @@ export const useTypingStore = create<TypingState>((set, get) => ({
     const metrics = computeMetrics(updatedWords, currentWordIndex, elapsed, ks, newCorrect, newIncorrect);
 
     const isLastWord = mode === 'words' && currentWordIndex === updatedWords.length - 1;
-    const expectedLen = updatedWords[currentWordIndex].chars.length;
-    if (isLastWord && value.length >= expectedLen) {
+    // 🐛 FIX (Bug #1) — this used to fire as soon as the RAW input reached
+    // the expected length (`value.length >= expectedLen`), finishing the
+    // test even if those characters were wrong. That's the "local/raw
+    // cursor" reaching the end instead of the synchronized/frozen cursor
+    // (utils/multiplayerCursor.ts's getFrozenOffsetInWord only advances
+    // through verified-correct characters). Completion must respect the
+    // same guarantee: the last word has to be an EXACT match before this
+    // shortcut can end the test. If it isn't, we fall through to the
+    // normal set() below — the mistyped/overflow characters still render,
+    // and the player has to backspace and fix them (same as any other
+    // word) before the test can actually finish.
+    const expectedWord = updatedWords[currentWordIndex].chars.map(c => c.char).join('');
+    if (isLastWord && value === expectedWord) {
       updatedWords[currentWordIndex] = finalizeWord(updatedWords[currentWordIndex]);
       set({
         words: updatedWords,

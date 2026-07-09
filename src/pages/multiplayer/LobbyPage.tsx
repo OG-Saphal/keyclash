@@ -23,6 +23,7 @@ import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
 import PlayerAvatar from '../../components/multiplayer/PlayerAvatar';
 import PlayerColorSwatches from '../../components/multiplayer/PlayerColorSwatches';
+import SpectatorsList from '../../components/multiplayer/SpectatorsList'; // ✨ Feature — spectator list
 import type { RoomSettingsDTO, CreateRoomInput } from '../../types/multiplayer';
 
 const LobbyPage: React.FC = () => {
@@ -58,8 +59,14 @@ const LobbyPage: React.FC = () => {
     setTimeout(() => setCopied(null), 1500);
   };
 
+  // 🐛 FIX (Bug #4) — this used to link to RoomBrowserPage
+  // (`#/multiplayer/browse?code=...`), a param that page never read, and
+  // which could throw a blank-page socket error if opened before the
+  // socket had ever connected. It now points at MultiplayerJoinPage, which
+  // explicitly connects the socket first and always renders a loading/
+  // error state instead of a blank screen. See MultiplayerJoinPage.tsx.
   const copyInviteLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}#/multiplayer/browse?code=${room.id}`;
+    const url = `${window.location.origin}${window.location.pathname}#/multiplayer/join?roomId=${room.id}`;
     navigator.clipboard.writeText(url);
     setCopied('link');
     setTimeout(() => setCopied(null), 1500);
@@ -358,13 +365,16 @@ const LobbyPage: React.FC = () => {
 
             {/* Spectators & Actions – pinned at bottom */}
             <div className="mt-auto pt-2 flex flex-col gap-3 flex-shrink-0">
-              {spectators.length > 0 && (
-                <p className="text-sm text-text-muted text-center">
-                  👀 {spectators.length} spectator{spectators.length > 1 ? 's' : ''} watching
-                </p>
-              )}
+              {/* ✨ Feature — real spectator list (avatars + usernames),
+                  replacing the old plain-text "N spectators watching" line. */}
+              <SpectatorsList spectators={spectators} variant="inline" />
               <div className="flex gap-3">
-                {!isHost && (
+                {/* 🐛 related fix — a spectator is never counted toward
+                    `canStart` (see activePlayers above), so showing them a
+                    Ready/Unready toggle was misleading; it's now gated on
+                    `!me?.isSpectator` too, same guard used everywhere else
+                    a spectator shouldn't act as an active player. */}
+                {!isHost && !me?.isSpectator && (
                   <button
                     className={`flex-1 px-4 py-3 rounded-xl cursor-pointer font-semibold text-center transition-colors ${
                       me?.isReady

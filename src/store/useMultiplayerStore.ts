@@ -294,8 +294,17 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   },
 
   // ── Return-to-lobby vote (Part 5) ───────────────────────────────────────
+  // 🐛 FIX (Bug #5) — defensive guard alongside the UI-level fix in
+  // MultiplayerResultsPage.tsx: even if something else ever calls this
+  // action for a spectator, it's a no-op rather than a round-trip to the
+  // server that the server would reject anyway (roomManager.voteReturnToLobby
+  // already throws NOT_IN_ROOM for spectators).
   voteReturnToLobby: (optIn) => {
     const room = get().currentRoom;
-    if (room) mp.voteReturnToLobby(room.id, optIn);
+    if (!room) return;
+    const myUserId = useAuthStore.getState().user?.id;
+    const me = room.players.find((p) => p.userId === myUserId);
+    if (me?.isSpectator) return;
+    mp.voteReturnToLobby(room.id, optIn);
   },
 }));

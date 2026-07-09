@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useLayoutEffect, useRef, useCallback } from 'react';
 import { useTypingStore } from '../store/useTypingStore';
 import { useKeyboardCapture } from '../hooks/useKeyboardCapture';
+import { getFrozenOffsetInWord } from '../utils/multiplayerCursor';
 import type { WordData } from '../types';
 
 // ─── Sub-component: a single word ────────────────────────────────────────────
@@ -12,9 +13,20 @@ interface WordProps {
   isRef: boolean;
   wordIndex: number; // 🆕 Part 2 — needed for the data-word-index lookup hook
   wordRef?: React.RefObject<HTMLSpanElement>;
+  // 🆕 hide the raw/live caret whenever it sits at the exact same position
+  // as the synchronized (frozen) cursor rendered by SelfCursorOverlay, so
+  // the two don't visually double up. Only ever passed `true` from
+  // RacePage.tsx — solo mode never sets this, since there's no sync
+  // cursor to defer to and the raw caret must always be visible there.
+  hideCaretWhenSynced?: boolean;
 }
 
-const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, wordRef }) => {
+const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, wordRef, hideCaretWhenSynced }) => {
+  // Computed once per word (not per character) — pure function of the same
+  // word/input data the engine already has, shared with SelfCursorOverlay
+  // so both sides agree on exactly where "frozen" is.
+  const frozenOffset = hideCaretWhenSynced ? getFrozenOffsetInWord(word, currentInput.length) : -1;
+  const caretMatchesSync = hideCaretWhenSynced && currentInput.length === frozenOffset;
   return (
     <span
       ref={wordRef}
@@ -44,10 +56,18 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, w
         const justWrong = isCurrent && i === currentInput.length - 1 && c.state === 'incorrect';
         return (
           <span key={i} className="relative" data-char-index={i}>
-            {/* Blinking caret before this character */}
-            {isCaret && (
+            {/* Blinking caret before this character.
+                🐛 FIX (local/sync caret mismatch) — sized and centered to
+                match SelfCursorOverlay's frozen cursor (height: 1.4em,
+                width 2px) instead of stretching top-0/bottom-0 to the full
+                line box, and dimmed via opacity so the raw/live caret
+                (which moves on every keystroke, including typos) reads as
+                visually distinct from the synchronized/frozen progress
+                cursor rendered on top of it. */}
+            {isCaret && !caretMatchesSync && (
               <span
-                className="absolute -left-px top-0 bottom-0 w-0.5 bg-text-cursor animate-blink rounded-full"
+                className="absolute -left-px top-0 w-0.5 bg-text-cursor/50 animate-blink rounded-full"
+                style={{ height: '1.4em' }}
                 aria-hidden="true"
               />
             )}
@@ -60,10 +80,13 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, w
           </span>
         );
       })}
-      {/* Caret at end of word when fully typed (and possibly overflowing) */}
-      {isCurrent && currentInput.length >= word.chars.length && word.extras.length === 0 && (
+      {/* Caret at end of word when fully typed (and possibly overflowing).
+          🐛 FIX (local/sync caret mismatch) — same 1.4em height + centered
+          + dimmed treatment as the before-character caret above. */}
+      {isCurrent && currentInput.length >= word.chars.length && word.extras.length === 0 && !caretMatchesSync && (
         <span
-          className="absolute right-0 top-0 bottom-0 w-0.5 -mr-px bg-text-cursor animate-blink rounded-full"
+          className="absolute right-0 top-0 w-0.5 -mr-px bg-text-cursor/50 animate-blink rounded-full"
+          style={{ height: '1.4em' }}
           aria-hidden="true"
         />
       )}
@@ -74,9 +97,13 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, w
             key={`extra-${i}`}
             className="relative text-word-incorrect"
           >
-            {i === word.extras.length - 1 && isCurrent && (
+            {/* 🐛 FIX (local/sync caret mismatch) — same 1.4em height +
+                centered + dimmed treatment as the other two carets in this
+                component. */}
+            {i === word.extras.length - 1 && isCurrent && !caretMatchesSync && (
               <span
-                className="absolute right-0 top-0 bottom-0 w-0.5 bg-text-cursor animate-blink rounded-full"
+                className="absolute right-0 top-0 w-0.5 bg-text-cursor/50 animate-blink rounded-full"
+                style={{ height: '1.4em' }}
                 aria-hidden="true"
               />
             )}
@@ -97,7 +124,7 @@ const Word: React.FC<WordProps> = ({ word, isCurrent, currentInput, wordIndex, w
  * Layout: words flow naturally. We track the current word's DOM position and
  * scroll the container so the current line is always at the top.
  */
-const WordDisplay: React.FC = () => {
+const WordDisplay: React.FC<{ hideCaretWhenSynced?: boolean }> = ({ hideCaretWhenSynced }) => {
   const words = useTypingStore(s => s.words);
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
   const currentInput = useTypingStore(s => s.currentInput);
@@ -116,12 +143,25 @@ const WordDisplay: React.FC = () => {
     // Only scroll when the current word starts a new visible line
     if (wordTop !== lastTopRef.current) {
       lastTopRef.current = wordTop;
-      // Scroll container so the current line is always at the top of the visible area
-      container.scrollTo({ top: wordTop - 8, behavior: 'smooth' });
+      // 🐛 FIX (Bug #2 — cursor misalignment on line transitions) — this
+      // used to animate with `behavior: 'smooth'`, which plays out over
+      // several frames AFTER paint (since it ran inside a plain
+      // useEffect). Any cursor overlay that positions itself off this
+      // container/word's getBoundingClientRect() (see
+      // utils/multiplayerCursor.ts's resolveCaretAnchor/caretAnchorX,
+      // used by SelfCursorOverlay/PeerCursorOverlay) could sample a rect
+      // mid-scroll-animation, landing a few pixels off from where the
+      // text actually settles. Scrolling instantly, inside
+      // useLayoutEffect (synchronously, before the browser paints),
+      // means the container is already at its final resting position by
+      // the time anything — including sibling overlay components — reads
+      // layout for that same render. No more animated window for the
+      // caret to desync in.
+      container.scrollTo({ top: wordTop - 8, behavior: 'auto' });
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     scrollToCurrentWord();
   }, [currentWordIndex, scrollToCurrentWord]);
 
@@ -163,6 +203,7 @@ const WordDisplay: React.FC = () => {
               isRef={i === currentWordIndex}
               wordIndex={i}
               wordRef={i === currentWordIndex ? currentWordRef : undefined}
+              hideCaretWhenSynced={hideCaretWhenSynced}
             />
           ))}
         </div>

@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
+import FriendsPage from './pages/FriendsPage';
 import FriendProfilePage from './pages/FriendProfilePage';
-import { useMultiplayerStore } from './store/useMultiplayerStore'; // 🆕 Part 5
 import FriendsSidebar from './components/friends/FriendsSidebar';
-import InviteNotification from './components/multiplayer/InviteNotification';
 import {
   HashRouter,
   Routes,
@@ -13,6 +12,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTypingStore } from './store/useTypingStore';
 import { useAuthStore } from './store/useAuthStore';
+import { useMultiplayerStore } from './store/useMultiplayerStore'; // 🆕 Part 5
 import { useTimer } from './hooks/useTimer';
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -29,6 +29,7 @@ import LobbyPage from './pages/multiplayer/LobbyPage';
 import QuickMatchSearchingPage from './pages/multiplayer/QuickMatchSearchingPage';
 import RacePage from './pages/multiplayer/RacePage';
 import MultiplayerResultsPage from './pages/multiplayer/MultiplayerResultsPage';
+import MultiplayerJoinPage from './pages/multiplayer/MultiplayerJoinPage'; // 🆕 Bug #8
 // 🆕 Shared across singleplayer + multiplayer pages
 import ModeTabBar from './components/ModeTabBar';
 import LeaveRoomConfirmModal from './components/multiplayer/LeaveRoomConfirmModal';
@@ -131,6 +132,15 @@ const TypingView: React.FC = () => {
  *    completing) drives every client from /multiplayer/results back to
  *    /multiplayer/lobby at the same moment, since it's the server confirming
  *    a shared state change, not a single client's local action.
+ *  - 🐛 FIX (Bug #2) — new: 'racing' -> 'finished' (every non-abandoned
+ *    active player has now finished or been marked DNF, per roomManager's
+ *    finishRace()) drives every client from /multiplayer/race to
+ *    /multiplayer/results at the same moment. This used to be done by
+ *    RacePage itself the instant ITS OWN local player finished — which is
+ *    exactly why results could appear before everyone was actually done.
+ *    RacePage now only submits its result and waits; this is the single
+ *    place that decides when it's actually time to move everyone to
+ *    results, matching every other cross-client transition in this router.
  *
  * 🐛 FIX: the original version of this router redirected to /multiplayer
  * whenever `currentRoom` was null on ANY /multiplayer/* route. But
@@ -161,44 +171,37 @@ const RoomStatusRouter: React.FC = () => {
     if (room.status === 'waiting' && location.pathname === '/multiplayer/results') {
       navigate('/multiplayer/lobby');
     }
+    // 🐛 FIX (Bug #2) — see doc comment above.
+    if (room.status === 'finished' && location.pathname === '/multiplayer/race') {
+      navigate('/multiplayer/results');
+    }
   }, [room, room?.status, location.pathname, navigate]);
   return null;
 };
 
 // ─── Root App with router ─────────────────────────────────────────────────────
 const App: React.FC = () => {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const connectionStatus = useMultiplayerStore((s) => s.connectionStatus);
-  const connect = useMultiplayerStore((s) => s.connect);
-
+  const initializeAuth = useAuthStore(s => s.initializeAuth);
+  // Bootstrap auth state once on mount
   useEffect(() => {
-    // Restore auth session first
-    useAuthStore.getState().initializeAuth();
-
-    // Then connect multiplayer if authenticated
-    if (isAuthenticated && connectionStatus === 'disconnected') {
-      connect();
-    }
-  }, [isAuthenticated, connectionStatus, connect]);
-
+    initializeAuth();
+  }, [initializeAuth]);
   return (
     <HashRouter>
+      {/* Both components can coexist here */}
       <LeaveRoomConfirmModal />
       <FriendsSidebar />
-      <RoomStatusRouter />
-      <InviteNotification />
+      <RoomStatusRouter /> {/* 🆕 Part 5 */}
       <Routes>
-        {/* Auth routes */}
+        {/* Auth routes (full-page, own layout) */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/verify" element={<VerifyEmailPage />} />
-
-        {/* Authenticated routes */}
+        {/* Authenticated routes (also full-page) */}
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
-
-        {/* Multiplayer routes */}
+        {/* 🆕 Multiplayer routes */}
         <Route path="/multiplayer" element={<MultiplayerMenuPage />} />
         <Route path="/multiplayer/create" element={<CreateRoomPage />} />
         <Route path="/multiplayer/browse" element={<RoomBrowserPage />} />
@@ -206,10 +209,14 @@ const App: React.FC = () => {
         <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
         <Route path="/multiplayer/race" element={<RacePage />} />
         <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
-
-        {/* Friend routes */}
+        {/* 🆕 Bug #8 — destination for copied invite links
+            (/#/multiplayer/join?roomId=ABC123). Deliberately NOT added to
+            ROOM_REQUIRED_PATHS above: currentRoom is expected to be null
+            here for the brief moment before the join call resolves. */}
+        <Route path="/multiplayer/join" element={<MultiplayerJoinPage />} />
+        {/* 🆕 Friend routes (from your friend) */}
+        <Route path="/friends" element={<FriendsPage />} />
         <Route path="/u/:username" element={<FriendProfilePage />} />
-
         {/* Default: typing app */}
         <Route path="*" element={<TypingView />} />
       </Routes>

@@ -17,6 +17,7 @@ const RoomBrowserPage: React.FC = () => {
   const roomList = useMultiplayerStore((s) => s.roomList);
   const refreshRoomList = useMultiplayerStore((s) => s.refreshRoomList);
   const joinRoom = useMultiplayerStore((s) => s.joinRoom);
+  const connect = useMultiplayerStore((s) => s.connect); // 🐛 FIX (Bug #4)
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
@@ -28,11 +29,25 @@ const RoomBrowserPage: React.FC = () => {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState(Date.now());
 
+  // 🐛 FIX (Bug #4) — this used to call refreshRoomList() unconditionally on
+  // mount, which throws "Multiplayer socket not connected." (an uncaught
+  // error, resulting in a blank page) whenever this page is reached before
+  // the socket has ever connected — e.g. navigating here directly rather
+  // than via a page that already called connect(). connect() itself is a
+  // no-op if already connected/connecting, so awaiting it here is always
+  // safe and never double-connects.
   useEffect(() => {
-    refreshRoomList();
+    let cancelled = false;
+    (async () => {
+      await connect();
+      if (!cancelled) refreshRoomList();
+    })();
     const t = setInterval(() => setLastRefreshed((prev) => prev), 1000);
-    return () => clearInterval(t);
-  }, [refreshRoomList]);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [refreshRoomList, connect]);
 
   useEffect(() => {
     setLastRefreshed(Date.now());

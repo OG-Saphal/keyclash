@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useState } from 'react';
 import { useTypingStore } from '../../store/useTypingStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import { resolvePlayerColor, type ColorId } from '../../data/playerColors';
-import { getFrozenOffsetInWord } from '../../utils/multiplayerCursor';
+import { getFrozenOffsetInWord, resolveCaretAnchor, caretAnchorX } from '../../utils/multiplayerCursor';
 
 interface Props {
   containerRef: React.RefObject<HTMLDivElement>;
@@ -54,14 +54,16 @@ const SelfCursorOverlay: React.FC<Props> = ({ containerRef, colorId }) => {
       setPos(null);
       return;
     }
-    // Same fallback-to-wordEl convention as PeerCursorOverlay for the
-    // end-of-word case, where no data-char-index exists past the last char.
-    const charEl =
-      wordEl.querySelector<HTMLElement>(`[data-char-index="${Math.max(0, frozenOffset)}"]`) ?? wordEl;
+    // 🐛 FIX (Bug #1) — see resolveCaretAnchor's doc comment. Anchoring to
+    // the LAST character's right edge (instead of falling back to the
+    // whole word element's left edge) is what keeps the cursor at the END
+    // of a just-completed word instead of snapping back to its start.
+    const wordLen = currentWord ? currentWord.chars.length : 0;
+    const anchor = resolveCaretAnchor(wordEl, frozenOffset, wordLen);
     const containerRect = container.getBoundingClientRect();
-    const targetRect = charEl.getBoundingClientRect();
+    const targetRect = anchor.el.getBoundingClientRect();
     setPos({
-      x: targetRect.left - containerRect.left + container.scrollLeft,
+      x: caretAnchorX(anchor, targetRect) - containerRect.left + container.scrollLeft,
       y: targetRect.top - containerRect.top + container.scrollTop,
     });
   }, [containerRef, currentWordIndex, frozenOffset, phase]);

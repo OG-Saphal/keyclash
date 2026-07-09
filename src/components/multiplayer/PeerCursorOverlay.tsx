@@ -1,8 +1,9 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useTypingStore } from '../../store/useTypingStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import { resolvePlayerColor } from '../../data/playerColors';
+import { resolveCaretAnchor, caretAnchorX } from '../../utils/multiplayerCursor';
 import type { RoomPlayerDTO } from '../../types/multiplayer';
 
 interface Props {
@@ -29,6 +30,13 @@ const PeerCursorOverlay: React.FC<Props> = ({ containerRef, players, selfUserId 
   const words = useTypingStore((s) => s.words);
   const theme = useThemeStore((s) => s.theme);
   const [positions, setPositions] = useState<Record<string, CaretPos>>({});
+  // 🆕 Bug #4 — tracks whether each player's most recent position update
+  // was a same-line move (smooth-animate it) or a line wrap / first-seen
+  // (snap instantly, no transition). Kept in a ref (not state) since it's
+  // read only inside the effect/render, never needs to trigger a re-render
+  // on its own.
+  const [noTransition, setNoTransition] = useState<Record<string, boolean>>({});
+  const prevPositionsRef = useRef<Record<string, CaretPos>>({});
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -57,9 +65,14 @@ const PeerCursorOverlay: React.FC<Props> = ({ containerRef, players, selfUserId 
       }
       const wordEl = container.querySelector<HTMLElement>(`[data-word-index="${progress.wordIndex}"]`);
       if (!wordEl) continue;
-      const charEl =
-        wordEl.querySelector<HTMLElement>(`[data-char-index="${Math.max(0, charsIntoWord)}"]`) ?? wordEl;
-      const targetRect = charEl.getBoundingClientRect();
+      // 🐛 FIX (Bug #1) — see resolveCaretAnchor's doc comment in
+      // multiplayerCursor.ts: anchor to the last character's RIGHT edge
+      // once charsIntoWord reaches the word's length, instead of falling
+      // back to the word wrapper's LEFT edge (which put peers' cursors at
+      // the front of the word they'd just finished instead of the end).
+      const wordLen = words[progress.wordIndex]?.chars.length ?? 0;
+      const anchor = resolveCaretAnchor(wordEl, charsIntoWord, wordLen);
+      const targetRect = anchor.el.getBoundingClientRect();
       // 🐛 FIX (Part 3) — previously there was no visibility check at all,
       // so a peer several lines ahead of the local player's auto-scrolled
       // view rendered floating above the visible text box instead of being
@@ -71,10 +84,24 @@ const PeerCursorOverlay: React.FC<Props> = ({ containerRef, players, selfUserId 
       }
       const containerRect = container.getBoundingClientRect();
       next[player.userId] = {
-        x: targetRect.left - containerRect.left + container.scrollLeft,
+        x: caretAnchorX(anchor, targetRect) - containerRect.left + container.scrollLeft,
         y: targetRect.top - containerRect.top + container.scrollTop,
       };
     }
+
+    // 🆕 Bug #4 — decide, per player, whether this update is a same-line
+    // move (smooth-transition it) or a line wrap / first appearance (snap
+    // instantly). Comparing against the PREVIOUS render's position (not
+    // just "did wordIndex change") correctly handles the common case of
+    // moving between two words that happen to sit on the same visual row.
+    const nextNoTransition: Record<string, boolean> = {};
+    for (const userId of Object.keys(next)) {
+      const prev = prevPositionsRef.current[userId];
+      const wrappedOrNew = !prev || Math.abs(prev.y - next[userId].y) > 1;
+      nextNoTransition[userId] = wrappedOrNew;
+    }
+    prevPositionsRef.current = next;
+    setNoTransition(nextNoTransition);
     setPositions(next);
   }, [otherPlayersProgress, words, players, selfUserId, containerRef]);
 
@@ -93,16 +120,21 @@ const PeerCursorOverlay: React.FC<Props> = ({ containerRef, players, selfUserId 
                 left: pos.x,
                 top: pos.y,
                 transform: 'translateX(-1px)',
-                // 🐛 FIX (Parts 2/9) — this used to carry
-                // `transition: 'left 250ms ease-out, top 250ms ease-out'`,
-                // which is exactly what produced the diagonal glide on a
-                // line wrap: x resets to line-start and y drops by one line
-                // height in the SAME animation, so the two transitions
-                // blend into one diagonal path across the screen. Per spec,
-                // replaced with a near-instant "key-strike" snap — no tween
-                // at all; the cursor just appears at its new spot on the
-                // next ~350ms progress tick, same cadence as before, just
-                // without the glide.
+                // 🐛 FIX (Bug #4, revised) — Parts 2/9 previously removed
+                // ALL transitions to stop a diagonal glide on line wraps
+                // (animating left+top together made the cursor visibly
+                // slide across the screen when a peer's caret jumped to
+                // the next row). That fixed the glide but made every
+                // cursor move look jerky, even smooth within-line
+                // progress. Now: only `left` ever animates (top NEVER
+                // does, so a line wrap can't glide diagonally no matter
+                // what), and even that horizontal animation is skipped
+                // (snap instantly) whenever THIS update was itself a line
+                // wrap or the player's first appearance — see
+                // `noTransition` above. Net effect: smooth interpolation
+                // while typing along one line, instant snap across a
+                // line/word wrap.
+                transition: noTransition[p.userId] ? 'none' : 'left 160ms linear',
               }}
             >
               {/* Caret shape — dual-tone outline so it never fully

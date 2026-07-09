@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
 import { resolvePlayerColor } from '../../data/playerColors'; // 🆕 Part 1
 import { fetchUserStats } from '../../services/results.service'; // 🆕 Part 4.6
+import SpectatorsList from '../../components/multiplayer/SpectatorsList'; // ✨ Feature — spectator list
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
@@ -69,8 +70,14 @@ const MultiplayerResultsPage: React.FC = () => {
 
   const votes = new Set(room.returnToLobbyVotes);
   const activePlayers = room.players.filter((p) => !p.isSpectator && p.connection !== 'abandoned');
+  const spectators = room.players.filter((p) => p.isSpectator); // ✨ Feature — spectator list
   const myVote = votes.has(currentUser.id);
   const myResult = leaderboard.find((p) => p.userId === currentUser.id);
+  // 🐛 FIX (Bug #5) — derived straight from the room roster (same pattern
+  // LobbyPage uses for `isHost`), so it stays correct if this user's own
+  // spectator status ever changes mid-session, rather than trusting a
+  // join-time flag that could go stale.
+  const isSpectator = room.players.find((p) => p.userId === currentUser.id)?.isSpectator ?? false;
 
   const podium = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
@@ -165,26 +172,56 @@ const MultiplayerResultsPage: React.FC = () => {
           </p>
         )}
 
-        {/* 🆕 Part 5 — return-to-lobby vote, doubling as the rematch CTA */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-              myVote ? 'bg-accent text-bg-primary' : 'border border-border hover:border-accent/60'
-            }`}
-            onClick={() => voteReturnToLobby(!myVote)}
-          >
-            {myVote ? 'Waiting for others…' : 'Return to Lobby'}
-          </button>
-          <span className="text-sm text-text-muted">
-            {votes.size} of {activePlayers.length} want a rematch
-          </span>
-          <button
-            className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
-            onClick={() => { voteReturnToLobby(false); leaveRoom(); navigate('/multiplayer'); }}
-          >
-            Leave
-          </button>
-        </div>
+        {/* ✨ Feature — spectators watching the results screen */}
+        <SpectatorsList spectators={spectators} variant="panel" />
+
+        {/*
+          🆕 Part 5 — return-to-lobby vote, doubling as the rematch CTA.
+          🐛 FIX (Bug #5) — this used to render the same clickable vote
+          button and "X of Y" count for EVERY viewer, including spectators.
+          The server already excludes spectators from both the vote
+          requirement (roomManager.voteReturnToLobby rejects a spectator's
+          vote outright) and the "everyone's voted" completion check
+          (maybeTransitionToLobby only counts active, non-abandoned
+          players) — but the UI still let a spectator click "Return to
+          Lobby", which silently failed server-side and made it LOOK like
+          their vote was required to proceed. Spectators now get a
+          read-only status line instead of a button; only active players
+          see (and can act on) the vote CTA.
+        */}
+        {isSpectator ? (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-text-muted">
+              👀 Spectating — {votes.size} of {activePlayers.length} players want a rematch
+            </span>
+            <button
+              className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
+              onClick={() => { leaveRoom(); navigate('/multiplayer'); }}
+            >
+              Leave
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                myVote ? 'bg-accent text-bg-primary' : 'border border-border hover:border-accent/60'
+              }`}
+              onClick={() => voteReturnToLobby(!myVote)}
+            >
+              {myVote ? 'Waiting for others…' : 'Return to Lobby'}
+            </button>
+            <span className="text-sm text-text-muted">
+              {votes.size} of {activePlayers.length} want a rematch
+            </span>
+            <button
+              className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
+              onClick={() => { voteReturnToLobby(false); leaveRoom(); navigate('/multiplayer'); }}
+            >
+              Leave
+            </button>
+          </div>
+        )}
       </main>
       <Footer />
     </div>

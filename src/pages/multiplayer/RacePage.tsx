@@ -15,6 +15,7 @@ import PlayerProgressBar from '../../components/multiplayer/PlayerProgressBar';
 import PeerCursorOverlay from '../../components/multiplayer/PeerCursorOverlay'; // 🆕 Part 2
 import SelfCursorOverlay from '../../components/multiplayer/SelfCursorOverlay'; // 🆕 Part 1
 import RaceLeaderboard from '../../components/multiplayer/RaceLeaderboard'; // 🆕 Part 5
+import SpectatorsList from '../../components/multiplayer/SpectatorsList'; // ✨ Feature — spectator list
 
 /**
  * Multiplayer race view. Reuses the EXISTING typing engine wholesale for the
@@ -93,50 +94,47 @@ const RacePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [raceStartTimestamp, startTest, beginProgressReporting]);
 
-  // 🆕 Part 6 — server-synced match countdown (time mode only).
+  // 🆕 Part 6 — server-synced match finish safety net (time mode only).
   //
   // useTimer() above still drives the engine's own 1-second tick() call —
   // that is LEFT COMPLETELY ALONE. tick() is also what triggers
-  // finishTest() when time runs out and what records the per-second
-  // wpmHistory graph point; both are real, shared engine responsibilities
-  // this deliberately does not duplicate or fork.
+  // finishTest() when time runs out, decrements `timeLeft` by 1 every real
+  // second, and records the per-second wpmHistory graph point; all of that
+  // is a real, shared engine responsibility this deliberately does not
+  // duplicate or fork.
   //
-  // What this effect adds: every 100ms (same cadence as the pre-race
-  // countdown above), it OVERWRITES the displayed `timeLeft` value with one
-  // derived straight from `raceStartTimestamp + duration`, the same
-  // server-anchored pattern the pre-race countdown already uses. Because
-  // tick() always decrements from whatever `timeLeft` currently holds, this
-  // overwrite makes tick()'s own countdown self-correct on every cycle
-  // instead of drifting from setInterval jitter or a throttled background
-  // tab — every client converges on the identical displayed number.
+  // 🐛 FIX (Bug #5 — "timer ticks incorrectly / counts down twice as
+  // fast") — this effect used to ALSO overwrite `timeLeft` every 100ms
+  // with a value derived straight from `raceStartTimestamp + duration`.
+  // That's a second, independent mechanism racing against tick()'s own
+  // relative `timeLeft - 1` decrement to be the one to cross each 1-second
+  // boundary first. Whichever one lost the race then decremented from a
+  // value the OTHER had already corrected down — e.g. this effect corrects
+  // 30 -> 29 a few ms before tick()'s own 1-second interval fires, and
+  // tick() then computes 29 - 1 = 28 for what should still have been the
+  // "29" second. That's two separate "drop by 1" events landing in the
+  // same real second, which is exactly the observed "29→28, 28→27, 27→26"
+  // double-speed symptom. tick() (and only tick()) must own `timeLeft` —
+  // solo mode already relies on this being true.
   //
-  // As a safety net for the case where a THROTTLED tab stalls its own
-  // 1-second tick() interval entirely (so tick() itself might not notice
-  // zero for a while): once the server-derived time actually reaches zero,
-  // this calls the engine's existing finishTest() action directly, guarded
-  // by a ref so it only ever fires once. This applies an EXISTING engine
-  // action from the integration layer — the same category of thing
-  // loadExternalWords() already does — not new engine logic. Solo mode is
-  // completely unaffected, since this effect only exists here in
-  // RacePage.tsx and never runs outside a multiplayer race.
+  // This effect now ONLY acts as a safety net for a THROTTLED tab whose
+  // own 1-second tick() interval might stall entirely (so tick() itself
+  // might never notice zero): once the server-derived clock has actually
+  // reached zero and the engine hasn't finished on its own yet, it calls
+  // the engine's existing finishTest() action directly — but it no longer
+  // touches `timeLeft` at all, so there is exactly one owner of that
+  // value again, in both solo and multiplayer.
   useEffect(() => {
     if (!raceStartTimestamp || !room || room.settings.mode !== 'time') return;
     const syncInterval = setInterval(() => {
       if (useTypingStore.getState().phase !== 'running') return;
       const endsAt = raceStartTimestamp + room.settings.duration * 1000;
-      const synced = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-      if (synced <= 0) {
-        if (!timeoutFinishRef.current) {
-          timeoutFinishRef.current = true;
-          useTypingStore.setState({ timeLeft: 0 });
-          useTypingStore.getState().finishTest();
-        }
-        return;
+      const msLeft = endsAt - Date.now();
+      if (msLeft <= 0 && !timeoutFinishRef.current) {
+        timeoutFinishRef.current = true;
+        useTypingStore.getState().finishTest();
       }
-      if (useTypingStore.getState().timeLeft !== synced) {
-        useTypingStore.setState({ timeLeft: synced });
-      }
-    }, 100);
+    }, 250);
     return () => clearInterval(syncInterval);
   }, [raceStartTimestamp, room]);
 
@@ -159,12 +157,26 @@ const RacePage: React.FC = () => {
     // startTest() has been called for it — means this effect can only ever
     // fire for a genuine finish of the CURRENT race, never a stale leftover
     // from the one before it.
+    // 🐛 FIX (Bug #2 — "results shown before everyone finishes") — this
+    // effect used to call navigate('/multiplayer/results') itself the
+    // moment THIS client's own submitFinalResult() resolved, regardless of
+    // whether any other active player was still racing. Submitting the
+    // result the instant you finish is still correct (the server should
+    // have your stats immediately), but the NAVIGATION now waits for the
+    // server to confirm the ROOM itself has moved to status 'finished' —
+    // i.e. every other non-abandoned active player has also finished or
+    // been marked DNF (see roomManager.ts's finishRace(), which already
+    // only flips room.status to 'finished' once that's true). That shared
+    // status transition is exactly what RoomStatusRouter (App.tsx) already
+    // reacts to identically for every client — the same pattern it already
+    // uses for the 'waiting' -> lobby rematch transition — so this
+    // component no longer navigates on its own.
     if (phase === 'finished' && raceStartedRef.current && !finishSubmittedRef.current) {
       finishSubmittedRef.current = true;
       stopProgressReporting();
-      submitFinalResult().then(() => navigate('/multiplayer/results'));
+      submitFinalResult();
     }
-  }, [phase, stopProgressReporting, submitFinalResult, navigate]);
+  }, [phase, stopProgressReporting, submitFinalResult]);
 
   useEffect(() => {
     if (!room) navigate('/multiplayer');
@@ -173,6 +185,7 @@ const RacePage: React.FC = () => {
   if (!room || !currentUser) return null;
 
   const activePlayers = room.players.filter((p) => !p.isSpectator);
+  const spectators = room.players.filter((p) => p.isSpectator); // ✨ Feature — spectator list
   const selfPlayer = activePlayers.find((p) => p.userId === currentUser.id); // 🆕 Part 1
   const totalWords = words.length;
 
@@ -196,6 +209,9 @@ const RacePage: React.FC = () => {
   });
 
   const showCountdown = countdown !== null && countdown > 0;
+  // 🆕 Bug #2 UX — shown once this client has finished but the room hasn't
+  // moved to 'finished' yet (other active players still racing/DNF-ing).
+  const waitingForOthers = phase === 'finished' && raceStartedRef.current && room.status !== 'finished';
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
@@ -233,6 +249,11 @@ const RacePage: React.FC = () => {
               className="w-full max-w-4xl flex flex-col md:flex-row gap-4"
             >
               <div className="flex-1 flex flex-col gap-6">
+                {waitingForOthers && (
+                  <div className="text-center text-sm text-text-secondary bg-bg-secondary border border-border rounded-lg py-2 px-4">
+                    You finished! Waiting for the other racers to finish…
+                  </div>
+                )}
                 {/* 🆕 Part 10 — same HUD solo mode shows: countdown timer
                     (time mode) or word progress (words mode, Part 7) plus
                     live wpm/raw/accuracy, sourced straight from
@@ -269,13 +290,20 @@ const RacePage: React.FC = () => {
                     WordDisplay's own existing blinking caret as the spec's
                     "true local caret": white in dark mode, black in light
                     mode, still tracking actual typing position exactly as
-                    before. WordDisplay.tsx itself is untouched by this. */}
+                    before.
+                    🐛 FIX (raw/synced caret double-up) — WordDisplay now
+                    also takes `hideCaretWhenSynced`, which suppresses its
+                    raw caret whenever it would land at the exact same
+                    position as SelfCursorOverlay's frozen cursor below (no
+                    uncorrected mistake in the current word). Solo mode
+                    never passes this prop, so its caret behavior is
+                    unaffected. */}
                 <div
                   className="relative"
                   ref={wordDisplayContainerRef}
                   style={{ '--text-cursor': theme === 'dark' ? '255 255 255' : '0 0 0' } as React.CSSProperties}
                 >
-                  <WordDisplay />
+                  <WordDisplay hideCaretWhenSynced />
                   <PeerCursorOverlay
                     containerRef={wordDisplayContainerRef}
                     players={activePlayers}
@@ -291,14 +319,19 @@ const RacePage: React.FC = () => {
                   stats, per-player placement tagged the moment they finish).
                   Replaces the old compact "Standings" panel that lived
                   inline here. */}
-              <RaceLeaderboard
-                players={activePlayers}
-                currentUserId={currentUser.id}
-                localWordIndex={currentWordIndex}
-                localWpm={localWpm}
-                localAccuracy={localAccuracy}
-                otherPlayersProgress={otherPlayersProgress}
-              />
+              <div className="flex flex-col gap-3">
+                <RaceLeaderboard
+                  players={activePlayers}
+                  currentUserId={currentUser.id}
+                  localWordIndex={currentWordIndex}
+                  localWpm={localWpm}
+                  localAccuracy={localAccuracy}
+                  otherPlayersProgress={otherPlayersProgress}
+                />
+                {/* ✨ Feature — spectators watching the race, real-time via
+                    the same room:updated broadcasts the leaderboard uses. */}
+                <SpectatorsList spectators={spectators} variant="inline" />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

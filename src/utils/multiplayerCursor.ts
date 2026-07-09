@@ -43,3 +43,52 @@ export function computeAbsoluteOffset(
   }
   return total + offsetInWord;
 }
+
+/**
+ * 🐛 FIX (Bug #1 — "cursor jumps to the front of the word you just
+ * finished") — both SelfCursorOverlay and PeerCursorOverlay looked up a
+ * `[data-char-index="N"]` span inside the current word to position the
+ * caret, falling back to the WHOLE word element (`wordEl`) whenever N was
+ * out of range. That fallback was only ever meant to cover "cursor sits
+ * AFTER the last character" (word fully typed but space not pressed yet)
+ * — but reading `wordEl.getBoundingClientRect()` gives the LEFT edge of
+ * the entire word box, i.e. the START of the word, not the end. So instead
+ * of the caret advancing to sit after the last typed character, it snapped
+ * back to the front of the word every time offsetInWord reached the
+ * word's length.
+ *
+ * This helper centralizes the correct behavior for both overlays: when the
+ * offset is still inside the word, anchor to that character's LEFT edge
+ * (the caret sits just before that character, same as it always did).
+ * When the offset has reached or passed the word's length, anchor to the
+ * LAST character's RIGHT edge instead — the true "end of word" position.
+ */
+export interface CaretAnchor {
+  el: HTMLElement;
+  edge: 'left' | 'right';
+}
+
+export function resolveCaretAnchor(
+  wordEl: HTMLElement,
+  offsetInWord: number,
+  wordLen: number,
+): CaretAnchor {
+  if (offsetInWord < wordLen) {
+    const charEl = wordEl.querySelector<HTMLElement>(
+      `[data-char-index="${Math.max(0, offsetInWord)}"]`,
+    );
+    if (charEl) return { el: charEl, edge: 'left' };
+  }
+  // At or past the end of the word — anchor to the LAST character's right
+  // edge. Only fall back to the word wrapper itself (old, buggy behavior)
+  // if the word has no characters at all (shouldn't normally happen).
+  const lastCharEl = wordEl.querySelector<HTMLElement>(
+    `[data-char-index="${Math.max(0, wordLen - 1)}"]`,
+  );
+  return lastCharEl ? { el: lastCharEl, edge: 'right' } : { el: wordEl, edge: 'left' };
+}
+
+/** Reads the correct x-coordinate (left or right edge) off a CaretAnchor. */
+export function caretAnchorX(anchor: CaretAnchor, rect: DOMRect): number {
+  return anchor.edge === 'right' ? rect.right : rect.left;
+}
