@@ -29,27 +29,6 @@ interface Props {
 
 const PLACEMENT_LABEL: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' };
 
-/**
- * 🆕 Redesign — this component now absorbs PlayerProgressBar's job too.
- * Per the design brief, the horizontal race-track bars and the leaderboard
- * are one thing: a live-ranked stack of "race lanes" in the sidebar, each
- * lane showing that player's avatar sliding along a dashed track. A player
- * moves out of the lane list and into a static "standings" row the instant
- * they finish (unchanged ranking rule — see below), so the sidebar reads
- * top-to-bottom as "already finished, in placement order" then "still
- * racing, in live order."
- *
- * PlayerProgressBar.tsx is left in place but no longer imported by
- * RacePage — folding its avatar-on-track visual in here directly meant
- * fewer components passing pct/color/connection back and forth for what is
- * now a single row concept.
- *
- * Ranking rule (unchanged from the previous version of this component):
- *  - Finished players (finalStats present, not a DNF) are ranked by
- *    finishedAt ascending — server-authoritative, never reshuffles.
- *  - Still-racing players are live-sorted by word index then wpm, with no
- *    placement badge, since their final rank isn't decided yet.
- */
 const RaceLeaderboard: React.FC<Props> = ({
   players, currentUserId, localWordIndex, localWpm, localAccuracy, otherPlayersProgress, totalWords, rankDeltas = {},
 }) => {
@@ -102,7 +81,9 @@ const RaceLeaderboard: React.FC<Props> = ({
                 {p.username}{isSelf ? ' (you)' : ''}
               </span>
               <Flag className="w-3 h-3 text-text-muted shrink-0" />
-              <span className="text-text-muted font-mono shrink-0">{p.finalStats!.wpm} wpm</span>
+              <span className="text-text-muted font-mono shrink-0 flex items-center gap-2">
+                {p.finalStats!.wpm} wpm · {p.finalStats!.accuracy}%
+              </span>
             </motion.div>
           );
         })}
@@ -130,8 +111,8 @@ const RaceLeaderboard: React.FC<Props> = ({
                 </span>
                 {delta === 1 && <span className="text-status-success text-[0.65rem]">▲</span>}
                 {delta === -1 && <span className="text-status-error text-[0.65rem]">▼</span>}
-                <span className="ml-auto text-text-muted font-mono shrink-0">
-                  {disconnected ? 'reconnecting…' : `${wpm} wpm`}
+                <span className="ml-auto text-text-muted font-mono shrink-0 flex items-center gap-2">
+                  {disconnected ? 'reconnecting…' : `${wpm} wpm · ${accuracy}%`}
                 </span>
               </div>
 
@@ -148,12 +129,7 @@ const RaceLeaderboard: React.FC<Props> = ({
                 />
                 <motion.div
                   className="absolute top-1/2 -translate-y-1/2"
-                  animate={{ left: `calc(${pct}% - 9px)` }}
-                  // 🐛 FIX (Parts 2/9, preserved) — deliberately near-instant
-                  // rather than a smooth glide: avatar movement should read
-                  // as a "key-strike" snap on each progress update, not a
-                  // tween. The very short linear duration only exists so
-                  // React doesn't visibly pop mid-frame on rapid re-renders.
+                  animate={{ left: `calc(${pct}% - 9px)` }}                  
                   transition={{ duration: 0.05, ease: 'linear' }}
                 >
                   <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} size={18} ring={isSelf} />
