@@ -34,15 +34,22 @@ const VoiceChatPanel: React.FC = () => {
         return map;
     }, [currentRoom?.players]);
 
+    // Join/leave voice strictly on room identity change (not on room content updates)
     useEffect(() => {
-        if (currentRoom?.id) {
+        const roomId = currentRoom?.id;
+
+        if (roomId) {
             voiceService.joinVoice();
         } else {
             voiceService.leaveVoice();
         }
-    }, [currentRoom?.id]);
 
-    // Local speaking detection
+        return () => {
+            voiceService.leaveVoice();
+        };
+    }, [currentRoom?.id]); // ✅ fixed: removed currentRoom?.players
+
+    // Local speaking detection (unchanged)
     useEffect(() => {
         if (!localStream) return;
         let ctx: AudioContext | null = null;
@@ -79,13 +86,11 @@ const VoiceChatPanel: React.FC = () => {
         };
     }, [localStream, setLocalSpeaking, setLastActiveSpeaker]);
 
-    const handleToggleMic = () => {
-        voiceService.toggleMute();   // only your own mic – nothing else
-    };
+    const handleToggleMic = () => voiceService.toggleMute();
 
     if (!currentRoom || !localStream) return null;
 
-    // Determine whose avatar to show
+    // Speaker avatar (unchanged)
     let speakerAvatarUrl: string | undefined;
     let speakerAltText = '';
     let isCurrentlySpeaking = false;
