@@ -45,7 +45,7 @@ class VoiceService {
     private makingOffer: Set<string> = new Set();
     private wasInVoice = false;
     private joined = false;
-    private disconnectedWhileInVoice = false;   // ← tracks temporary disconnects
+    private disconnectedWhileInVoice = false;
 
     private isPolite(peerId: string): boolean {
         return this.userId! < peerId;
@@ -63,26 +63,22 @@ class VoiceService {
         this.socket.on('voice:mute-state', this.handleMuteState.bind(this));
         this.socket.on('voice:roster', this.handleRoster.bind(this));
 
-        // ---------- Disconnect handling ----------
+        // Disconnect → keep session alive, but clean up temporarily
         this.socket.on('disconnect', () => {
             if (this.wasInVoice) {
-                console.log('[voice] Socket disconnected – cleaning up but keeping voice session');
-                // Close all peer connections (they're probably dead anyway)
+                console.log('[voice] Socket disconnected – cleaning up temporarily');
                 this.peerConnections.forEach(pc => pc.close());
                 this.peerConnections.clear();
                 this.makingOffer.clear();
-                // Stop the local stream temporarily (so we don’t hold the mic)
                 if (this.localStream) {
                     this.localStream.getTracks().forEach(track => track.stop());
                     this.localStream = null;
                 }
-                // Mark that we need to rejoin when connection comes back
                 this.disconnectedWhileInVoice = true;
-                // Do NOT change wasInVoice or joined here – we’re still logically in voice
             }
         });
 
-        // ---------- Reconnect handling ----------
+        // Reconnect → rejoin only if still in same room
         this.socket.on('connect', () => {
             if (
                 this.disconnectedWhileInVoice &&
@@ -104,12 +100,10 @@ class VoiceService {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
 
-        if (this.joined && this.roomId === room?.id && this.userId === user?.id) {
-            return;
-        }
-
-        if (this.joined) {
-            await this.leaveVoiceInternal();
+        // Always start fresh when joining
+        if (this.joined || this.wasInVoice) {
+            console.log('[voice] Forcing clean start before join');
+            this.leaveVoiceInternal();
         }
 
         if (!room || !user) return;
@@ -126,7 +120,7 @@ class VoiceService {
             useVoiceStore.getState().setLocalStream(this.localStream);
             useVoiceStore.getState().setMuted(false);
             this.wasInVoice = true;
-            this.disconnectedWhileInVoice = false; // clear any stale flag
+            this.disconnectedWhileInVoice = false;
         } catch (err) {
             console.error('[voice] Failed to get mic:', err);
             this.joined = false;
@@ -230,7 +224,7 @@ class VoiceService {
     }
 
     private handlePeerJoined(_userId: string) {
-        // intentionally empty – we wait for the joiner’s offer
+        // intentionally empty
     }
 
     private handlePeerLeft(userId: string) {
@@ -314,12 +308,27 @@ class VoiceService {
         });
     };
 
-    private rejoinVoice() {
+    private async rejoinVoice() {
         if (!this.roomId || !this.userId) return;
+        console.log('[voice] Rejoining voice – reacquiring mic');
+
+        // ✅ CRITICAL: re‑get microphone after disconnect
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.localStream.getAudioTracks().forEach(track => (track.enabled = true));
+            useVoiceStore.getState().setLocalStream(this.localStream);
+            useVoiceStore.getState().setMuted(false);
+        } catch (err) {
+            console.error('[voice] Failed to re‑get mic on rejoin:', err);
+            // Even without mic, still rejoin as listener
+            this.localStream = null;
+        }
+
         this.joined = true;
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             const rosterSet = new Set(roster.filter(id => id !== this.userId));
 
+            // Remove peers no longer in the room
             for (const [peerId, pc] of this.peerConnections) {
                 if (!rosterSet.has(peerId)) {
                     pc.close();
@@ -329,7 +338,7 @@ class VoiceService {
             }
             this.makingOffer.clear();
 
-            // Re‑initiate only toward peers we don’t already have
+            // Create connections for new peers (or all if we cleared everything)
             roster.forEach(peerId => {
                 if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
