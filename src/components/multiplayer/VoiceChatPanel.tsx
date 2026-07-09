@@ -34,7 +34,7 @@ const VoiceChatPanel: React.FC = () => {
         return map;
     }, [currentRoom?.players]);
 
-    // 🔁 Robust join/leave: reacts to room ID AND player list changes
+    // Join/leave voice strictly on room identity change (not on room content updates)
     useEffect(() => {
         const roomId = currentRoom?.id;
 
@@ -47,7 +47,7 @@ const VoiceChatPanel: React.FC = () => {
         return () => {
             voiceService.leaveVoice();
         };
-    }, [currentRoom?.id, currentRoom?.players]);
+    }, [currentRoom?.id]); // ✅ fixed: removed currentRoom?.players
 
     // Local speaking detection (unchanged)
     useEffect(() => {
