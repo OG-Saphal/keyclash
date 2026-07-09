@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Flag } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
+import { resolvePlayerColor } from '../../data/playerColors';
+import { useThemeStore } from '../../store/useThemeStore';
 import type { RoomPlayerDTO } from '../../types/multiplayer';
 
 interface OtherProgress {
@@ -16,38 +19,42 @@ interface Props {
   localWpm: number;
   localAccuracy: number;
   otherPlayersProgress: Record<string, OtherProgress>;
+  /** Total words in the race text — drives each lane's fill %. Same value
+   *  every client already has via useMultiplayerStore().raceWords.length. */
+  totalWords: number;
+  /** Overtake indicator per userId, computed by RacePage (unchanged logic —
+   *  this component only reads it, same as the old PlayerProgressBar did). */
+  rankDeltas?: Record<string, -1 | 0 | 1>;
 }
 
 const PLACEMENT_LABEL: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' };
 
 /**
- * 🆕 Part 5 — full leaderboard overhaul. Replaces the old compact
- * "Standings" panel (name + wpm only, re-sorted every render purely by live
- * progress) that used to live inline in RacePage.tsx. Now shows avatar +
- * name + live wpm/accuracy per player, and — the actual point of this task
- * item — tags each row with its placement (1st, 2nd, ...) the MOMENT that
- * player finishes, not just once every player has.
+ * 🆕 Redesign — this component now absorbs PlayerProgressBar's job too.
+ * Per the design brief, the horizontal race-track bars and the leaderboard
+ * are one thing: a live-ranked stack of "race lanes" in the sidebar, each
+ * lane showing that player's avatar sliding along a dashed track. A player
+ * moves out of the lane list and into a static "standings" row the instant
+ * they finish (unchanged ranking rule — see below), so the sidebar reads
+ * top-to-bottom as "already finished, in placement order" then "still
+ * racing, in live order."
  *
- * Ranking rule:
- *  - Everyone who has FINISHED (finalStats present, not a DNF/abandon) is
- *    ranked first, ordered by when they actually finished (finalStats.
- *    finishedAt, ascending) — this is the server-authoritative moment
- *    (see server/src/socket/handlers.ts race:finish handler) and never
- *    reshuffles once assigned, since finishedAt never changes after the
- *    fact.
- *  - Everyone still racing is listed below, live-sorted by progress
- *    (word index, then wpm) same as before, but deliberately WITHOUT a
- *    placement badge — their final rank isn't decided until they finish.
+ * PlayerProgressBar.tsx is left in place but no longer imported by
+ * RacePage — folding its avatar-on-track visual in here directly meant
+ * fewer components passing pct/color/connection back and forth for what is
+ * now a single row concept.
  *
- * This component only reads/renders. It does not decide navigation —
- * RacePage.tsx's own "local player finished -> submit + navigate" effect is
- * completely untouched by this UI change, so the "only navigate to results
- * once every active player has finished" behavior mentioned in the spec
- * is unaffected either way.
+ * Ranking rule (unchanged from the previous version of this component):
+ *  - Finished players (finalStats present, not a DNF) are ranked by
+ *    finishedAt ascending — server-authoritative, never reshuffles.
+ *  - Still-racing players are live-sorted by word index then wpm, with no
+ *    placement badge, since their final rank isn't decided yet.
  */
 const RaceLeaderboard: React.FC<Props> = ({
-  players, currentUserId, localWordIndex, localWpm, localAccuracy, otherPlayersProgress,
+  players, currentUserId, localWordIndex, localWpm, localAccuracy, otherPlayersProgress, totalWords, rankDeltas = {},
 }) => {
+  const theme = useThemeStore((s) => s.theme);
+
   const { finished, racing } = useMemo(() => {
     const finishedPlayers = players
       .filter((p) => p.finalStats && !p.finalStats.dnf)
@@ -66,11 +73,13 @@ const RaceLeaderboard: React.FC<Props> = ({
   }, [players, currentUserId, localWordIndex, localWpm, localAccuracy, otherPlayersProgress]);
 
   return (
-    <div className="w-full md:w-56 bg-bg-secondary border border-border rounded-xl p-2 flex flex-col gap-1 h-fit">
-      <span className="text-xs font-semibold text-text-muted uppercase tracking-wide px-1 pb-1">
-        Standings
+    <div className="w-full md:w-72 shrink-0 bg-white/5 backdrop-blur-sm border border-border rounded-2xl p-2.5 flex flex-col gap-1.5 h-fit">
+      <span className="text-[0.65rem] font-sans font-semibold text-text-muted uppercase tracking-[0.2em] px-1.5 pb-0.5">
+        Live standings
       </span>
+
       <AnimatePresence initial={false}>
+        {/* Finished — static placement rows */}
         {finished.map((p, i) => {
           const placement = i + 1;
           const isSelf = p.userId === currentUserId;
@@ -78,38 +87,78 @@ const RaceLeaderboard: React.FC<Props> = ({
             <motion.div
               key={p.userId}
               layout
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2 text-xs px-1 py-1 rounded bg-bg-tertiary/40"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={[
+                'flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg',
+                placement === 1 ? 'bg-podium-gold/10 border border-podium-gold/30' : 'bg-bg-tertiary/40',
+              ].join(' ')}
             >
-              <span className="w-8 font-mono font-semibold text-accent shrink-0">
+              <span className={`w-7 font-mono font-bold shrink-0 ${placement === 1 ? 'text-podium-gold' : 'text-accent-primary'}`}>
                 {PLACEMENT_LABEL[placement] ?? `${placement}th`}
               </span>
               <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} size={20} ring={isSelf} />
-              <span className={`flex-1 truncate ${isSelf ? 'font-semibold text-accent' : ''}`}>
+              <span className={`flex-1 truncate ${isSelf ? 'font-semibold text-accent-primary' : ''}`}>
                 {p.username}{isSelf ? ' (you)' : ''}
               </span>
-              <span className="text-text-muted shrink-0">{p.finalStats!.wpm} wpm</span>
+              <Flag className="w-3 h-3 text-text-muted shrink-0" />
+              <span className="text-text-muted font-mono shrink-0">{p.finalStats!.wpm} wpm</span>
             </motion.div>
           );
         })}
-        {racing.map(({ player: p, wpm, accuracy }) => {
+
+        {/* Still racing — live lanes */}
+        {racing.map(({ player: p, wordIndex, wpm, accuracy }, i) => {
           const isSelf = p.userId === currentUserId;
+          const color = resolvePlayerColor(p.colorId, theme);
+          const pct = totalWords > 0 ? Math.min(100, (wordIndex / totalWords) * 100) : 0;
+          const isLeading = i === 0 && wordIndex > 0;
+          const delta = rankDeltas[p.userId] ?? 0;
+          const disconnected = p.connection === 'disconnected';
+
           return (
             <motion.div
               key={p.userId}
               layout
-              className="flex items-center gap-2 text-xs px-1 py-1 rounded"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-1 px-1.5 py-1"
             >
-              <span className="w-8 shrink-0" />
-              <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} size={20} ring={isSelf} />
-              <span className={`flex-1 truncate ${isSelf ? 'font-semibold text-accent' : 'text-text-muted'}`}>
-                {p.username}{isSelf ? ' (you)' : ''}
-                {p.connection === 'disconnected' && <span className="ml-1 text-status-warning">⏳</span>}
-              </span>
-              <span className="text-text-muted shrink-0">
-                {p.connection === 'disconnected' ? 'reconnecting…' : `${wpm} wpm · ${accuracy}%`}
-              </span>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className={`truncate ${isSelf ? 'font-semibold text-accent-primary' : 'text-text-muted'}`}>
+                  {p.username}{isSelf ? ' (you)' : ''}
+                </span>
+                {delta === 1 && <span className="text-status-success text-[0.65rem]">▲</span>}
+                {delta === -1 && <span className="text-status-error text-[0.65rem]">▼</span>}
+                <span className="ml-auto text-text-muted font-mono shrink-0">
+                  {disconnected ? 'reconnecting…' : `${wpm} wpm`}
+                </span>
+              </div>
+
+              {/* Lane / track */}
+              <div
+                className={[
+                  'relative h-6 rounded-full bg-track bg-lane-dashes overflow-hidden border border-white/5',
+                  isLeading ? 'shadow-lane-lead' : '',
+                ].join(' ')}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full opacity-20 transition-[width] duration-300"
+                  style={{ width: `${pct}%`, background: !disconnected ? color : undefined }}
+                />
+                <motion.div
+                  className="absolute top-1/2 -translate-y-1/2"
+                  animate={{ left: `calc(${pct}% - 9px)` }}
+                  // 🐛 FIX (Parts 2/9, preserved) — deliberately near-instant
+                  // rather than a smooth glide: avatar movement should read
+                  // as a "key-strike" snap on each progress update, not a
+                  // tween. The very short linear duration only exists so
+                  // React doesn't visibly pop mid-frame on rapid re-renders.
+                  transition={{ duration: 0.05, ease: 'linear' }}
+                >
+                  <PlayerAvatar username={p.username} avatarUrl={p.avatarUrl} size={18} ring={isSelf} />
+                </motion.div>
+              </div>
             </motion.div>
           );
         })}

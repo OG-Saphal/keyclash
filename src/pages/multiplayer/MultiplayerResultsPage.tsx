@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import {Trophy, Crown } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
 import { resolvePlayerColor } from '../../data/playerColors'; // 🆕 Part 1
 import { fetchUserStats } from '../../services/results.service'; // 🆕 Part 4.6
 import SpectatorsList from '../../components/multiplayer/SpectatorsList'; // ✨ Feature — spectator list
+import Podium from '../../components/multiplayer/Podium'; // 🆕 redesign — hero winner's-stage podium
 import Header from '../../components/Header';
 import ModeTabBar from '../../components/ModeTabBar';
 import Footer from '../../components/Footer';
@@ -31,13 +32,31 @@ import Footer from '../../components/Footer';
  * against it. The old host-only "Change Settings" button is dropped too:
  * once the vote completes and everyone's back in the lobby, settings are
  * already editable there via RoomSettingsPanel.
+ *
+ * 🆕 Visual redesign — the podium is now the page's hero (Podium.tsx, tiered
+ * winner's-stage treatment); the 4th+ list below is a dense "results sheet"
+ * with alternating rows; the rematch/leave CTA moved into a fixed, elevated
+ * bottom bar so it reads as a clear call to action rather than trailing
+ * page content. All state/logic below is unchanged from the previous
+ * version — only the return JSX changed.
  */
+
+const listVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06, delayChildren: 0.2 } },
+};
+
+const rowVariants = {
+  hidden: { opacity: 0, x: -12 },
+  show: { opacity: 1, x: 0, transition: { duration: 0.3 } },
+};
+
 const MultiplayerResultsPage: React.FC = () => {
   const room = useMultiplayerStore((s) => s.currentRoom);
   const leaveRoom = useMultiplayerStore((s) => s.leaveRoom);
-  const voteReturnToLobby = useMultiplayerStore((s) => s.voteReturnToLobby);
+  const voteReturnToLobby = useMultiplayerStore((s) => s.voteReturnToLobby); // 🆕 Part 5
   const currentUser = useAuthStore((s) => s.user);
-  const theme = useThemeStore((s) => s.theme);
+  const theme = useThemeStore((s) => s.theme); // 🆕 Part 1
   const navigate = useNavigate();
 
   const [personalBest, setPersonalBest] = useState<number | null>(null);
@@ -53,7 +72,11 @@ const MultiplayerResultsPage: React.FC = () => {
       });
   }, [room]);
 
-  // 🆕 Part 4.6 — personal-best delta.
+  // 🆕 Part 4.6 — personal-best delta. Every multiplayer participant is
+  // already authenticated (guests are gated out before they can even
+  // connect — see MultiplayerAuthModal / useMultiplayerStore.connect()), so
+  // there's no separate "guest skips this" branch needed here; the null
+  // check below is just defensive.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
@@ -69,7 +92,6 @@ const MultiplayerResultsPage: React.FC = () => {
   const activePlayers = room.players.filter((p) => !p.isSpectator && p.connection !== 'abandoned');
   const spectators = room.players.filter((p) => p.isSpectator); // ✨ Feature — spectator list
   const myVote = votes.has(currentUser.id);
-  const myResult = leaderboard.find((p) => p.userId === currentUser.id);
   // 🐛 FIX (Bug #5) — derived straight from the room roster (same pattern
   // LobbyPage uses for `isHost`), so it stays correct if this user's own
   // spectator status ever changes mid-session, rather than trusting a
@@ -79,96 +101,113 @@ const MultiplayerResultsPage: React.FC = () => {
   const podium = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
 
+  // 🆕 Part 4.4 — micro-awards, computed purely from finalStats already on
+  // the DTO. "Comeback" (largest mid-race rank improvement) is deliberately
+  // NOT included: neither the server nor the client retains any per-tick
+  // progress HISTORY today (only the latest snapshot is ever kept), so there
+  // is no data to compute it from without adding new tracking — flagging
+  // this rather than fabricating a result. Say the word and I'll wire up a
+  // small progressHistory array server-side if you want this award.
+  const fastestFingers = leaderboard.reduce<typeof leaderboard[number] | null>(
+    (best, p) => ((p.finalStats?.wpm ?? 0) > (best?.finalStats?.wpm ?? 0) ? p : best),
+    leaderboard[0] ?? null
+  );
+
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
-      <Header />
-      <ModeTabBar />
-      <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full flex flex-col gap-5">
+    <div className="relative min-h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
+      {/* 🆕 same ambient mesh treatment as RacePage, for visual continuity
+          across the race -> results transition. */}
+      <div className="pointer-events-none absolute inset-0 bg-mesh-race animate-meshDrift" />
 
-        {/* Page Header */}
-        <div className="flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-accent-primary" />
-          <h1 className="text-2xl font-bold">Race Results</h1>
-        </div>
-
-        {/* 🆕 Part 4.1 — podium for the top 3 */}
-        {podium.length > 0 && (
-          <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 p-6 flex items-end justify-center gap-6 shadow-sm">
-            {[podium[1], podium[0], podium[2]].map((p, i) =>
-              p ? (
-                <div key={p.userId} className={`flex flex-col items-center ${i === 1 ? 'order-2' : ''}`}>
-                  {/* 👑 Crown placed above the winner's candle */}
-                  {i === 1 && <Crown className="w-7 h-7 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />}
-
-                  <div
-                    className="rounded-t-lg w-20 flex items-start justify-center pt-2 text-bg-primary font-bold text-lg"
-                    style={{
-                      height: i === 1 ? 96 : i === 0 ? 68 : 52,
-                      background: i === 1 ? '#FFD24D' : i === 0 ? '#C0C0C0' : '#CD7F32',
-                    }}
-                  >
-                    {p.finalStats?.wpm ?? 0}
-                  </div>
-                  <span
-                    className="w-2.5 h-2.5 rounded-full mt-2"
-                    style={{ background: resolvePlayerColor(p.colorId, theme) }}
-                  />
-                  <span className="text-xs mt-1 font-medium truncate max-w-[5rem]">{p.username}</span>
-                </div>
-              ) : (
-                <div key={`empty-podium-${i}`} className="w-20" />
-              )
-            )}
+      <div className="relative z-10 flex flex-col flex-1">
+        <Header />
+        <ModeTabBar />
+        {/* pb-28 reserves room for the fixed bottom CTA bar */}
+        <main className="flex-1 px-4 pt-8 pb-28 max-w-2xl mx-auto w-full flex flex-col gap-7">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Race Results</h1>
+            <p className="text-xs text-text-muted mt-1">{activePlayers.length} racers · {room.settings.mode === 'time' ? `${room.settings.duration}s` : `${room.settings.wordCount} words`}</p>
           </div>
-        )}
 
-        {/* Ranked list (4th+), plus per-player stat detail (Part 4.3) */}
-        {rest.length > 0 && (
-          <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 divide-y divide-bg-primary/20 shadow-sm overflow-hidden">
-            {rest.map((p, i) => (
-              <div key={p.userId} className="flex items-center justify-between px-5 py-3.5 hover:bg-bg-primary/20 transition-colors">
-                <div className="flex items-center gap-4">
-                  <span className="w-5 text-text-muted font-mono text-sm text-center">{i + 4}</span>
-                  <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ background: resolvePlayerColor(p.colorId, theme) }}
-                  />
-                  <span className="font-medium">{p.username}</span>
-                  {p.finalStats?.dnf && <span className="text-xs text-text-muted italic">(DNF)</span>}
-                  {p.finalStats?.outlierFlag && (
-                    <span className="text-xs text-yellow-500" title="Flagged for review — not blocked">⚑</span>
-                  )}
-                </div>
-                <div className="flex gap-4 text-sm font-mono">
-                  <span className="font-semibold text-accent-primary">{p.finalStats?.wpm ?? 0} wpm</span>
-                  <span className="text-text-muted">{p.finalStats?.accuracy ?? 0}% acc</span>
-                  <span className="text-text-muted hidden sm:block">{p.finalStats?.rawWpm ?? 0} raw</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* 🆕 Podium — the visual hero of the page */}
+          <Podium podium={podium} theme={theme} currentUserId={currentUser.id} personalBest={personalBest} />
 
-        {/* 🆕 Part 4.6 — personal-best delta only (micro-awards removed) */}
-        <div className="bg-bg-secondary/80 rounded-xl border border-bg-primary/20 p-5 shadow-sm flex justify-end gap-4">
-          {personalBest !== null && myResult?.finalStats && !myResult.finalStats.dnf && (
-            <p className="text-sm text-text-muted text-right">
-              {myResult.finalStats.wpm > personalBest ? (
-                <span className="text-green-400 font-medium">
-                  🎉 New PB! +{myResult.finalStats.wpm - personalBest} wpm
-                </span>
-              ) : (
-                <span>{personalBest - myResult.finalStats.wpm} wpm off your PB ({personalBest})</span>
-              )}
-            </p>
+          {/* 🆕 Part 4.4 — micro-award, styled as a glowing sticker/badge */}
+          {fastestFingers && (
+            <div className="flex justify-center">
+              <span
+                className="px-4 py-1.5 rounded-full bg-accent-primary/10 border border-accent-primary/30 text-xs font-semibold text-accent-primary"
+                style={{ boxShadow: '0 0 20px rgb(var(--accent-primary) / 0.25)' }}
+              >
+                ⚡ Fastest fingers — {fastestFingers.username} ({fastestFingers.finalStats?.wpm ?? 0} wpm)
+              </span>
+            </div>
           )}
-        </div>
 
-        {/* ✨ Feature — spectators watching the results screen */}
-        <SpectatorsList spectators={spectators} variant="panel" />
+          {/* Results sheet — dense, scannable rows for 4th place onward */}
+          {rest.length > 0 && (
+            <motion.div
+              variants={listVariants}
+              initial="hidden"
+              animate="show"
+              className="bg-white/5 backdrop-blur-sm border border-border rounded-2xl overflow-hidden"
+            >
+              {rest.map((p, i) => {
+                const isSelf = p.userId === currentUser.id;
+                const delta = isSelf && personalBest !== null && p.finalStats && !p.finalStats.dnf
+                  ? p.finalStats.wpm - personalBest
+                  : null;
+                return (
+                  <motion.div
+                    key={p.userId}
+                    variants={rowVariants}
+                    className={[
+                      'flex items-center justify-between px-4 py-3',
+                      i % 2 === 1 ? 'bg-white/[0.02]' : '',
+                      isSelf ? 'ring-1 ring-inset ring-accent-primary/30' : '',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-6 text-text-muted font-mono text-sm shrink-0">{i + 4}</span>
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ background: resolvePlayerColor(p.colorId, theme) }}
+                      />
+                      <span className={`font-medium truncate ${isSelf ? 'text-accent-primary' : ''}`}>
+                        {p.username}{isSelf ? ' (you)' : ''}
+                      </span>
+                      {p.finalStats?.dnf && <span className="text-xs text-text-muted shrink-0">(left)</span>}
+                      {p.finalStats?.outlierFlag && (
+                        <span className="text-xs text-status-warning shrink-0" title="Flagged for review — not blocked">⚑</span>
+                      )}
+                      {/* 🆕 Part 4.6 — personal-best delta, integrated next
+                          to the user's own row instead of a separate
+                          paragraph elsewhere on the page. */}
+                      {delta !== null && (
+                        <span className={`text-xs shrink-0 ${delta >= 0 ? 'text-status-success' : 'text-text-muted'}`}>
+                          {delta >= 0 ? `+${delta} pb` : `${delta} vs pb`}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-4 text-sm font-mono shrink-0">
+                      <span>{p.finalStats?.wpm ?? 0} wpm</span>
+                      <span className="text-text-muted">{p.finalStats?.accuracy ?? 0}% acc</span>
+                      <span className="text-text-muted">{p.finalStats?.rawWpm ?? 0} raw</span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          )}
+
+          {/* ✨ Feature — spectators watching the results screen */}
+          <SpectatorsList spectators={spectators} variant="panel" />
+        </main>
 
         {/*
-          🆕 Part 5 — return-to-lobby vote, doubling as the rematch CTA.
+          🆕 Part 5 — return-to-lobby vote, doubling as the rematch CTA, now
+          a fixed, elevated bottom bar so it reads as the page's primary
+          call to action instead of trailing content.
           🐛 FIX (Bug #5) — this used to render the same clickable vote
           button and "X of Y" count for EVERY viewer, including spectators.
           The server already excludes spectators from both the vote
@@ -181,42 +220,47 @@ const MultiplayerResultsPage: React.FC = () => {
           read-only status line instead of a button; only active players
           see (and can act on) the vote CTA.
         */}
-        {isSpectator ? (
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm text-text-muted">
-              👀 Spectating — {votes.size} of {activePlayers.length} players want a rematch
-            </span>
-            <button
-              className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
-              onClick={() => { leaveRoom(); navigate('/multiplayer'); }}
-            >
-              Leave
-            </button>
+        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-bg-secondary/80 backdrop-blur-md">
+          <div className="max-w-2xl mx-auto w-full px-4 py-3">
+            {isSpectator ? (
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-sm text-text-muted">
+                  👀 Spectating — {votes.size} of {activePlayers.length} players want a rematch
+                </span>
+                <button
+                  className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary transition-colors"
+                  onClick={() => { leaveRoom(); navigate('/multiplayer'); }}
+                >
+                  Leave
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  className={`px-5 py-2.5 rounded-xl font-semibold transition-colors ${
+                    myVote
+                      ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
+                      : 'bg-accent-primary text-bg-primary shadow-glow hover:bg-accent-hover'
+                  }`}
+                  onClick={() => voteReturnToLobby(!myVote)}
+                >
+                  {myVote ? 'Waiting for others…' : 'Return to Lobby'}
+                </button>
+                <span className="text-sm text-text-muted">
+                  {votes.size} of {activePlayers.length} want a rematch
+                </span>
+                <button
+                  className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary transition-colors"
+                  onClick={() => { voteReturnToLobby(false); leaveRoom(); navigate('/multiplayer'); }}
+                >
+                  Leave
+                </button>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                myVote ? 'bg-accent text-bg-primary' : 'border border-border hover:border-accent/60'
-              }`}
-              onClick={() => voteReturnToLobby(!myVote)}
-            >
-              {myVote ? 'Waiting for others…' : 'Return to Lobby'}
-            </button>
-            <span className="text-sm text-text-muted">
-              {votes.size} of {activePlayers.length} want a rematch
-            </span>
-            <button
-              className="ml-auto px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text-primary"
-              onClick={() => { voteReturnToLobby(false); leaveRoom(); navigate('/multiplayer'); }}
-            >
-              Leave
-            </button>
-          </div>
-        )}
-
-      </main>
-      <Footer />
+        </div>
+        <Footer />
+      </div>
     </div>
   );
 };

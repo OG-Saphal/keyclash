@@ -14,13 +14,6 @@
   box-sizing: border-box;
 }
 
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -30,71 +23,71 @@ html {
 :root {
   color-scheme: dark;
 
-  --bg-primary: 13 14 19;
-  /* #0D0E13 — real near-black anchor */
-  --bg-secondary: 30 32 43;
-  /* #1E202B — card */
-  --bg-tertiary: 45 48 64;
-  /* #2D3040 — elevated */
-  --bg-hover: 60 64 84;
-  /* #3C4054 — hover */
+  --bg-primary: 10 10 15;
+  --bg-secondary: 20 20 30;
+  --bg-tertiary: 28 28 46;
+  --bg-hover: 37 37 58;
 
-  --accent-primary: 108 124 199;
-  /* #6C7CC7 — base, same ramp logic as your purple */
-  --accent-hover: 138 154 219;
-  /* #8A9ADB — lighter tint, mirrors your #8F81F5 move */
-  --accent-glow: 108 124 199 0.18;
-  /* same hue, low alpha, exactly like your original */
-  --accent-secondary: 94 102 138;
-  /* #5E668A quiet secondary, distinct from muted text */
+  /* 🆕 border — previously used across the app (border-border,
+     divide-border) but never defined, silently falling back to Tailwind's
+     default gray and breaking dark/light theming on every panel edge. */
+  --border: 42 42 64;
+  /* 🆕 track — the recessed "road" surface behind the word display,
+     one step darker than bg-secondary so the typing area reads as a
+     distinct lane rather than another card. */
+  --track: 6 6 10;
 
-  --text-primary: 224 227 236;
-  --text-secondary: 158 163 184;
-  --text-muted: 100 106 128;
-  --text-cursor: 108 124 199;
+  --accent-primary: 124 109 240;
+  --accent-secondary: 78 204 196;
+  --accent-glow: 124 109 240 0.2;
+  --accent-hover: 143 129 245;
 
-  --word-correct: 224 227 236;
-  /* = text-primary, stays out of the way */
-  --word-incorrect: 216 106 118;
-  /* #D86A76 the one real signal color */
-  --word-current: 250 250 253;
-  --word-pending: 60 64 84;
-  /* = bg-hover, recessive */
+  --text-primary: 240 240 245;
+  --text-secondary: 184 184 208;
+  --text-muted: 107 107 133;
+  --text-cursor: 124 109 240;
 
-  --status-success: 108 158 138;
-  --status-warning: 205 160 95;
-  --status-error: 216 106 118;
-  --status-info: 108 124 199;
+  --word-correct: 184 184 208;
+  --word-incorrect: 255 107 107;
+  --word-current: 240 240 245;
+  --word-pending: 74 74 102;
+
+  --status-success: 78 204 196;
+  --status-warning: 255 217 61;
+  --status-error: 255 107 107;
+  --status-info: 124 109 240;
 }
 
 html[data-theme='light'] {
   color-scheme: light;
 
-  --bg-primary: 247 248 251;
+  --bg-primary: 245 245 248;
   --bg-secondary: 255 255 255;
-  --bg-tertiary: 233 235 241;
-  --bg-hover: 216 219 229;
+  --bg-tertiary: 220 224 232;
+  --bg-hover: 235 238 244;
 
-  --accent-primary: 70 82 150;
-  /* #4652 96 darker version, same hue, AA-safe on white */
-  --accent-hover: 55 66 128;
-  --accent-glow: 70 82 150 0.08;
-  --accent-secondary: 94 102 138;
+  --border: 222 226 233;
+  --track: 234 236 241;
 
-  --text-primary: 32 34 45;
-  --text-secondary: 90 96 118;
-  --text-muted: 150 155 175;
-  --text-cursor: 70 82 150;
+  --accent-primary: 110 95 224;
+  --accent-secondary: 20 184 166;
+  --accent-glow: 110 95 224 0.12;
+  --accent-hover: 130 116 240;
 
-  --word-correct: 32 34 45;
-  --word-incorrect: 190 84 96;
-  --word-current: 0 0 0;
-  --word-pending: 205 209 220;
+  --text-primary: 20 25 40;
+  --text-secondary: 71 85 105;
+  --text-muted: 120 130 150;
+  --text-cursor: 110 95 224;
 
-  --status-success: 80 122 104;
-  --status-warning: 150 112 62;
-  --status-error: 190 84 96;
-  --status-info: 70 82 150;
+  --word-correct: 71 85 105;
+  --word-incorrect: 220 38 38;
+  --word-current: 20 25 40;
+  --word-pending: 170 180 196;
+
+  --status-success: 16 185 129;
+  --status-warning: 245 158 11;
+  --status-error: 239 68 68;
+  --status-info: 110 95 224;
 }
 
 body {
@@ -132,4 +125,17 @@ button {
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--bg-tertiary));
   border-radius: 2px;
+}
+
+/* 🆕 respect reduced-motion for the new "adrenaline" animations —
+   ambient drift and stomp/flash effects are exactly the kind of motion
+   this preference exists to suppress. Color transitions and the caret
+   blink are left alone since they're informational, not decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-meshDrift,
+  .animate-stomp,
+  .animate-goFlash,
+  .animate-glowPulse {
+    animation: none !important;
+  }
 }
