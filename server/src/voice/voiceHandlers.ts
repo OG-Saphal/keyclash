@@ -5,8 +5,8 @@ import {
     getVoiceUsers,
     removeUserFromAllVoiceRooms,
     findUserRoom,
-} from './voiceManager';
-import type { VoiceSignalPayload, VoiceMuteStatePayload } from './types';
+} from './voiceManager.js';
+import type { VoiceSignalPayload, VoiceMuteStatePayload } from './types.js';
 
 export function registerVoiceHandlers(io: Server, socket: Socket) {
     console.log(`[voice] registering handlers for socket ${socket.id}`);
