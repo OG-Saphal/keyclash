@@ -7,7 +7,26 @@ import type { Socket } from 'socket.io-client';
 const ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        // Add TURN server here when needed
+        {
+            urls: 'turn:global.relay.metered.ca:80',
+            username: 'af8144af8e6b1b9e714925c8',
+            credential: 'JOnxdfLjdjSL01MU',
+        },
+        {
+            urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+            username: 'af8144af8e6b1b9e714925c8',
+            credential: 'JOnxdfLjdjSL01MU',
+        },
+        {
+            urls: 'turn:global.relay.metered.ca:443',
+            username: 'af8144af8e6b1b9e714925c8',
+            credential: 'JOnxdfLjdjSL01MU',
+        },
+        {
+            urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+            username: 'af8144af8e6b1b9e714925c8',
+            credential: 'JOnxdfLjdjSL01MU',
+        },
     ],
 };
 
