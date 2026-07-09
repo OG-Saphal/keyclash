@@ -46,6 +46,8 @@ class VoiceService {
     private wasInVoice = false;
     private joined = false;
     private disconnectedWhileInVoice = false;
+    // 👇 fix: buffer ICE candidates that arrive before setRemoteDescription resolves
+    private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
 
     private isPolite(peerId: string): boolean {
         return this.userId! < peerId;
@@ -147,6 +149,7 @@ class VoiceService {
         this.peerConnections.forEach(pc => pc.close());
         this.peerConnections.clear();
         this.makingOffer.clear();
+        this.pendingCandidates.clear(); // 👈 fix
 
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
@@ -233,12 +236,26 @@ class VoiceService {
 
     private removePeer(userId: string) {
         this.makingOffer.delete(userId);
+        this.pendingCandidates.delete(userId); // 👈 fix: don't leak stale candidates
         const pc = this.peerConnections.get(userId);
         if (pc) {
             pc.close();
             this.peerConnections.delete(userId);
         }
         useVoiceStore.getState().removePeerStream(userId);
+    }
+
+    private async flushPendingCandidates(peerId: string, pc: RTCPeerConnection) {
+        const queued = this.pendingCandidates.get(peerId);
+        if (!queued || queued.length === 0) return;
+        this.pendingCandidates.delete(peerId);
+        for (const c of queued) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(c));
+            } catch (err) {
+                console.error(`[voice] Failed to flush queued candidate for ${peerId}:`, err);
+            }
+        }
     }
 
     private async handleSignal(payload: any) {
@@ -251,6 +268,7 @@ class VoiceService {
             if (this.makingOffer.has(fromUserId)) {
                 if (this.isPolite(fromUserId)) {
                     this.makingOffer.delete(fromUserId);
+                    this.pendingCandidates.delete(fromUserId); // 👈 fix: drop candidates for the connection we're about to discard
                     if (pc) {
                         pc.close();
                         this.peerConnections.delete(fromUserId);
@@ -277,6 +295,7 @@ class VoiceService {
         try {
             if (type === 'offer') {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                await this.flushPendingCandidates(fromUserId, pc); // 👈 fix
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 this.socket?.emit('voice:signal', {
@@ -287,8 +306,17 @@ class VoiceService {
             } else if (type === 'answer') {
                 this.makingOffer.delete(fromUserId);
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                await this.flushPendingCandidates(fromUserId, pc); // 👈 fix
             } else if (type === 'ice-candidate') {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                // 👇 fix: remote description may not be set yet (network latency on deployed hosts,
+                // unlike near-zero-latency localhost) — queue instead of dropping via swallowed error
+                if (pc.remoteDescription && pc.remoteDescription.type) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } else {
+                    const queue = this.pendingCandidates.get(fromUserId) || [];
+                    queue.push(candidate);
+                    this.pendingCandidates.set(fromUserId, queue);
+                }
             }
         } catch (err) {
             console.error('Signal error:', err);
