@@ -150,7 +150,7 @@ const VoiceChatPanel: React.FC = () => {
                 <button
                     onClick={handleToggleMic}
                     title={isMuted ? 'Unmute mic' : 'Mute mic'}
-                    className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200
+                    className={`flex items-center cursor-pointer justify-center w-9 h-9 rounded-full transition-all duration-200
                       ${isMuted
                             ? 'bg-red-500 hover:bg-red-600 text-white'
                             : 'bg-white/10 hover:bg-white/20 text-current'
