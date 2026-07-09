@@ -21,7 +21,6 @@ const VoiceChatPanel: React.FC = () => {
     const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
     const localAnalyserRef = useRef<AnalyserNode | null>(null);
     const localAnimFrameRef = useRef<number | null>(null);
-    const remoteUnmuted = useRef(false);
 
     const playerMap = useMemo(() => {
         if (!currentRoom?.players) return {};
@@ -35,13 +34,11 @@ const VoiceChatPanel: React.FC = () => {
         return map;
     }, [currentRoom?.players]);
 
-    // Join/leave voice based on room
     useEffect(() => {
         if (currentRoom?.id) {
             voiceService.joinVoice();
         } else {
             voiceService.leaveVoice();
-            remoteUnmuted.current = false;
         }
     }, [currentRoom?.id]);
 
@@ -82,31 +79,23 @@ const VoiceChatPanel: React.FC = () => {
         };
     }, [localStream, setLocalSpeaking, setLastActiveSpeaker]);
 
-    // Mic toggle – also unmutes remote audio on first click
     const handleToggleMic = () => {
-        voiceService.toggleMute();
-
-        if (!remoteUnmuted.current) {
-            Object.values(audioRefs.current).forEach(audio => {
-                audio.muted = false;   // 🔈 unmute the already‑playing streams
-            });
-            remoteUnmuted.current = true;
-        }
+        voiceService.toggleMute();   // only your own mic – nothing else
     };
 
     if (!currentRoom || !localStream) return null;
 
-    // Speaker avatar logic
+    // Determine whose avatar to show
     let speakerAvatarUrl: string | undefined;
     let speakerAltText = '';
     let isCurrentlySpeaking = false;
     if (lastActiveSpeaker === 'local') {
-        speakerAvatarUrl = user?.avatarUrl || '/default-avatar.png';
+        speakerAvatarUrl = user?.avatarUrl || undefined;
         speakerAltText = user?.username || 'You';
         isCurrentlySpeaking = localSpeaking;
     } else if (lastActiveSpeaker && peers[lastActiveSpeaker]) {
         const info = playerMap[lastActiveSpeaker];
-        speakerAvatarUrl = info?.avatarUrl || '/default-avatar.png';
+        speakerAvatarUrl = info?.avatarUrl;
         speakerAltText = info?.username || 'User';
         isCurrentlySpeaking = peers[lastActiveSpeaker].speaking;
     }

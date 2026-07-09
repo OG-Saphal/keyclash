@@ -58,6 +58,7 @@ io.on('connection', (socket) => {
   // Register all room handlers
   registerRoomHandlers(io, socket as any);
   registerVoiceHandlers(io, socket);
+  socket.join(`user:${socket.data.userId}`);
 });
 
 startCleanupSweep(io);

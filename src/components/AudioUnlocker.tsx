@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
+import { useVoiceStore } from '../store/useVoiceStore';
 
 const AudioUnlocker: React.FC = () => {
+    const setAudioUnlocked = useVoiceStore((s) => s.setAudioUnlocked);
+
     useEffect(() => {
         const unlock = () => {
-            // Create a silent AudioContext and resume it.
-            // This permanently unblocks audio for the whole page.
+            // Existing AudioContext unlock logic
             const ctx = new AudioContext();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
-            gain.gain.value = 0; // completely silent
+            gain.gain.value = 0;
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(0);
@@ -16,7 +18,10 @@ const AudioUnlocker: React.FC = () => {
             if (ctx.state === 'suspended') {
                 ctx.resume();
             }
-            // Remove the listeners after the first interaction.
+
+            // 👇 Mark audio as unlocked – this will un-mute all VoicePeerAudio components
+            setAudioUnlocked();
+
             document.removeEventListener('click', unlock);
             document.removeEventListener('touchstart', unlock);
             document.removeEventListener('keydown', unlock);
@@ -31,9 +36,9 @@ const AudioUnlocker: React.FC = () => {
             document.removeEventListener('touchstart', unlock);
             document.removeEventListener('keydown', unlock);
         };
-    }, []);
+    }, [setAudioUnlocked]);
 
-    return null; // renders nothing
+    return null;
 };
 
 export default AudioUnlocker;

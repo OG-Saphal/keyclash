@@ -10,24 +10,25 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
     const audioRef = useRef<HTMLAudioElement>(null);
     const ctxRef = useRef<AudioContext | null>(null);
     const animFrameRef = useRef<number | null>(null);
+    const audioUnlocked = useVoiceStore((s) => s.audioUnlocked);
 
     useImperativeHandle(ref, () => audioRef.current!, [audioRef]);
 
-    // Attach stream and start playing muted (browsers allow muted autoplay)
+    // Attach stream. Muted only if audio hasn't been unlocked yet.
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio || !stream) return;
 
         audio.srcObject = stream;
-        audio.muted = true;   // <-- muted autoplay always allowed
+        audio.muted = !audioUnlocked;   // 👈 the fix
         audio.volume = 1.0;
 
         audio.play().catch(err =>
-            console.warn(`[voice] Muted play error for ${peerId}:`, err.message)
+            console.warn(`[voice] play error for ${peerId}:`, err.message)
         );
-    }, [stream, peerId]);
+    }, [stream, peerId, audioUnlocked]); // re-runs when unlocked
 
-    // Speaking detection
+    // Speaking detection (unchanged)
     useEffect(() => {
         if (!stream) return;
         let ctx: AudioContext | null = null;

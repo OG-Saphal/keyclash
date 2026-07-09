@@ -1,4 +1,4 @@
-import { getSocket } from './multiplayer.service';
+import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -27,7 +27,6 @@ const ICE_SERVERS = {
             username: 'af8144af8e6b1b9e714925c8',
             credential: 'JOnxdfLjdjSL01MU',
         },
-        // Free fallback
         {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
@@ -45,7 +44,8 @@ class VoiceService {
     private listenersSetup = false;
     private makingOffer: Set<string> = new Set();
     private wasInVoice = false;
-    private joined = false; // Prevents duplicate join calls
+    private joined = false;
+    private disconnectedWhileInVoice = false;   // ← tracks temporary disconnects
 
     private isPolite(peerId: string): boolean {
         return this.userId! < peerId;
@@ -53,15 +53,9 @@ class VoiceService {
 
     constructor() { }
 
-    private ensureSocketAndListeners() {
+    private async ensureSocketAndListeners() {
         if (this.listenersSetup) return;
-
-        try {
-            this.socket = getSocket();
-        } catch (e) {
-            console.error('Cannot get multiplayer socket – is it connected?', e);
-            throw e;
-        }
+        this.socket = await connectMultiplayerSocket();
 
         this.socket.on('voice:peer-joined', this.handlePeerJoined.bind(this));
         this.socket.on('voice:peer-left', this.handlePeerLeft.bind(this));
@@ -69,9 +63,37 @@ class VoiceService {
         this.socket.on('voice:mute-state', this.handleMuteState.bind(this));
         this.socket.on('voice:roster', this.handleRoster.bind(this));
 
+        // ---------- Disconnect handling ----------
+        this.socket.on('disconnect', () => {
+            if (this.wasInVoice) {
+                console.log('[voice] Socket disconnected – cleaning up but keeping voice session');
+                // Close all peer connections (they're probably dead anyway)
+                this.peerConnections.forEach(pc => pc.close());
+                this.peerConnections.clear();
+                this.makingOffer.clear();
+                // Stop the local stream temporarily (so we don’t hold the mic)
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                    this.localStream = null;
+                }
+                // Mark that we need to rejoin when connection comes back
+                this.disconnectedWhileInVoice = true;
+                // Do NOT change wasInVoice or joined here – we’re still logically in voice
+            }
+        });
+
+        // ---------- Reconnect handling ----------
         this.socket.on('connect', () => {
-            if (this.wasInVoice && this.roomId && this.userId) {
+            if (
+                this.disconnectedWhileInVoice &&
+                this.wasInVoice &&
+                this.roomId &&
+                this.userId &&
+                useMultiplayerStore.getState().currentRoom?.id === this.roomId
+            ) {
+                console.log('[voice] Reconnected – rejoining voice');
                 this.rejoinVoice();
+                this.disconnectedWhileInVoice = false;
             }
         });
 
@@ -82,39 +104,38 @@ class VoiceService {
         const room = useMultiplayerStore.getState().currentRoom;
         const user = useAuthStore.getState().user;
 
-        // If already joined the same room, do nothing.
-        if (this.joined && this.roomId === room?.id) return;
-
-        if (!room || !user) {
-            console.warn('[voice-client] cannot join - no room or user');
+        if (this.joined && this.roomId === room?.id && this.userId === user?.id) {
             return;
         }
 
-        // If we were joined to a different room, leave first.
         if (this.joined) {
-            this.leaveVoice();
+            await this.leaveVoiceInternal();
         }
+
+        if (!room || !user) return;
 
         this.userId = user.id;
         this.roomId = room.id;
         this.joined = true;
-        this.wasInVoice = true;
 
-        this.ensureSocketAndListeners();
+        await this.ensureSocketAndListeners();
 
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.localStream.getAudioTracks().forEach(track => (track.enabled = true));
             useVoiceStore.getState().setLocalStream(this.localStream);
+            useVoiceStore.getState().setMuted(false);
+            this.wasInVoice = true;
+            this.disconnectedWhileInVoice = false; // clear any stale flag
         } catch (err) {
-            console.error('Failed to get mic', err);
+            console.error('[voice] Failed to get mic:', err);
             this.joined = false;
             return;
         }
 
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
-            console.log('[voice-client] roster received:', roster);
             roster.forEach(peerId => {
-                if (peerId !== this.userId) {
+                if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
                 }
             });
@@ -122,8 +143,10 @@ class VoiceService {
     }
 
     leaveVoice() {
-        this.joined = false;
-        this.wasInVoice = false;
+        this.leaveVoiceInternal();
+    }
+
+    private leaveVoiceInternal() {
         if (!this.userId) return;
         this.socket?.emit('voice:leave', this.userId);
 
@@ -137,6 +160,9 @@ class VoiceService {
         }
 
         useVoiceStore.getState().reset();
+        this.joined = false;
+        this.wasInVoice = false;
+        this.disconnectedWhileInVoice = false;
         this.userId = null;
         this.roomId = null;
     }
@@ -161,7 +187,6 @@ class VoiceService {
         }
 
         pc.ontrack = (event) => {
-            console.log('[voice] ontrack from', peerId, 'track kind:', event.track.kind);
             const remoteStream = new MediaStream();
             remoteStream.addTrack(event.track);
             useVoiceStore.getState().addPeerStream(peerId, remoteStream);
@@ -178,7 +203,6 @@ class VoiceService {
         };
 
         pc.onconnectionstatechange = () => {
-            console.log(`[voice] connection state with ${peerId}: ${pc.connectionState}`);
             if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
                 this.removePeer(peerId);
             }
@@ -205,9 +229,8 @@ class VoiceService {
         }
     }
 
-    private handlePeerJoined(userId: string) {
-        if (userId === this.userId || !this.roomId) return;
-        this.createPeerConnection(userId, true);
+    private handlePeerJoined(_userId: string) {
+        // intentionally empty – we wait for the joiner’s offer
     }
 
     private handlePeerLeft(userId: string) {
@@ -231,10 +254,8 @@ class VoiceService {
         let pc = this.peerConnections.get(fromUserId);
 
         if (type === 'offer') {
-            const collision = this.makingOffer.has(fromUserId);
-            if (collision) {
+            if (this.makingOffer.has(fromUserId)) {
                 if (this.isPolite(fromUserId)) {
-                    console.log('[voice] Collision: we are polite, rolling back offer to', fromUserId);
                     this.makingOffer.delete(fromUserId);
                     if (pc) {
                         pc.close();
@@ -243,7 +264,6 @@ class VoiceService {
                     this.createPeerConnection(fromUserId, false);
                     pc = this.peerConnections.get(fromUserId);
                 } else {
-                    console.log('[voice] Collision: we are impolite, ignoring offer from', fromUserId);
                     return;
                 }
             }
@@ -254,7 +274,6 @@ class VoiceService {
                 this.createPeerConnection(fromUserId, false);
                 pc = this.peerConnections.get(fromUserId);
             } else {
-                console.warn(`Ignoring signal, no peer connection for ${fromUserId}`);
                 return;
             }
         }
@@ -278,34 +297,41 @@ class VoiceService {
                 await pc.addIceCandidate(new RTCIceCandidate(candidate));
             }
         } catch (err) {
-            console.error('Error handling signal', err);
+            console.error('Signal error:', err);
         }
     }
 
-    private handleMuteState(payload: { userId: string; muted: boolean }) {
+    private handleMuteState = (payload: { userId: string; muted: boolean }) => {
         useVoiceStore.getState().setPeerMuted(payload.userId, payload.muted);
-    }
+    };
 
-    private handleRoster(payload: { users: string[] }) {
+    private handleRoster = (payload: { users: string[] }) => {
         const currentPeers = Array.from(this.peerConnections.keys());
         currentPeers.forEach(peerId => {
             if (!payload.users.includes(peerId)) {
                 this.removePeer(peerId);
             }
         });
-    }
+    };
 
     private rejoinVoice() {
         if (!this.roomId || !this.userId) return;
         this.joined = true;
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
-            this.peerConnections.forEach(pc => pc.close());
-            this.peerConnections.clear();
-            this.makingOffer.clear();
-            useVoiceStore.getState().clearPeers();
+            const rosterSet = new Set(roster.filter(id => id !== this.userId));
 
+            for (const [peerId, pc] of this.peerConnections) {
+                if (!rosterSet.has(peerId)) {
+                    pc.close();
+                    this.peerConnections.delete(peerId);
+                    useVoiceStore.getState().removePeerStream(peerId);
+                }
+            }
+            this.makingOffer.clear();
+
+            // Re‑initiate only toward peers we don’t already have
             roster.forEach(peerId => {
-                if (peerId !== this.userId) {
+                if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
                 }
             });
