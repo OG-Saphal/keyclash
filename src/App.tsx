@@ -5,6 +5,7 @@ import FriendsSidebar from './components/friends/FriendsSidebar';
 
 import InviteNotification from './components/multiplayer/InviteNotification';
 import VoiceChatPanel from './components/multiplayer/VoiceChatPanel';
+import AudioUnlocker from './components/AudioUnlocker';
 
 import {
   HashRouter,
@@ -158,6 +159,7 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       {/* These components are always mounted and driven by state */}
+      <AudioUnlocker />
       <LeaveRoomConfirmModal />
       <FriendsSidebar />
       <RoomStatusRouter />
