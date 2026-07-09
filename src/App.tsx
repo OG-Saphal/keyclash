@@ -39,7 +39,7 @@ import Settings from './components/Settings';
 import Timer from './components/Timer';
 import LiveStats from './components/LiveStats';
 import WordDisplay from './components/WordDisplay';
-import WordProgress from './components/WordProgress'; // 🆕 Part 7/10 — extracted, now shared with RacePage.tsx (was a private component defined below, inline)
+import WordProgress from './components/WordProgress'; 
 import RestartButton from './components/RestartButton';
 import Results from './components/Results';
 import Footer from './components/Footer';
@@ -117,40 +117,7 @@ const TypingView: React.FC = () => {
   );
 };
 
-// ─── Room-status-driven navigation (🆕 Part 5) ────────────────────────────────
-/**
- * Single source of truth for room-status-driven navigation. Consolidates
- * what used to be split across pages:
- *  - LobbyPage previously navigated to /multiplayer/race itself when status
- *    became 'countdown'/'racing', and back to /multiplayer when the room
- *    disappeared. Both effects have been REMOVED from LobbyPage.tsx.
- *  - RacePage's own navigate() call after submitFinalResult() is left in
- *    place — that's a client-local event (this client just finished
- *    submitting), not a status broadcast every client needs to react to
- *    identically, so it doesn't belong in this shared router.
- *  - New for Part 5: 'finished' -> 'waiting' (the return-to-lobby vote
- *    completing) drives every client from /multiplayer/results back to
- *    /multiplayer/lobby at the same moment, since it's the server confirming
- *    a shared state change, not a single client's local action.
- *  - 🐛 FIX (Bug #2) — new: 'racing' -> 'finished' (every non-abandoned
- *    active player has now finished or been marked DNF, per roomManager's
- *    finishRace()) drives every client from /multiplayer/race to
- *    /multiplayer/results at the same moment. This used to be done by
- *    RacePage itself the instant ITS OWN local player finished — which is
- *    exactly why results could appear before everyone was actually done.
- *    RacePage now only submits its result and waits; this is the single
- *    place that decides when it's actually time to move everyone to
- *    results, matching every other cross-client transition in this router.
- *
- * 🐛 FIX: the original version of this router redirected to /multiplayer
- * whenever `currentRoom` was null on ANY /multiplayer/* route. But
- * CreateRoomPage, RoomBrowserPage, MultiplayerMenuPage, and
- * QuickMatchSearchingPage are all SUPPOSED to have currentRoom === null —
- * that's their normal resting state before a room exists yet. The redirect
- * was firing the instant you landed on Create/Browse, bouncing you straight
- * back before you could do anything. The "no room" redirect now only
- * applies to the pages that actually require one.
- */
+
 const ROOM_REQUIRED_PATHS = ['/multiplayer/lobby', '/multiplayer/race', '/multiplayer/results'];
 const RoomStatusRouter: React.FC = () => {
   const room = useMultiplayerStore((s) => s.currentRoom);
@@ -171,7 +138,6 @@ const RoomStatusRouter: React.FC = () => {
     if (room.status === 'waiting' && location.pathname === '/multiplayer/results') {
       navigate('/multiplayer/lobby');
     }
-    // 🐛 FIX (Bug #2) — see doc comment above.
     if (room.status === 'finished' && location.pathname === '/multiplayer/race') {
       navigate('/multiplayer/results');
     }
@@ -209,10 +175,7 @@ const App: React.FC = () => {
         <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
         <Route path="/multiplayer/race" element={<RacePage />} />
         <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
-        {/* 🆕 Bug #8 — destination for copied invite links
-            (/#/multiplayer/join?roomId=ABC123). Deliberately NOT added to
-            ROOM_REQUIRED_PATHS above: currentRoom is expected to be null
-            here for the brief moment before the join call resolves. */}
+        {}
         <Route path="/multiplayer/join" element={<MultiplayerJoinPage />} />
         {/* 🆕 Friend routes (from your friend) */}
         <Route path="/friends" element={<FriendsPage />} />
