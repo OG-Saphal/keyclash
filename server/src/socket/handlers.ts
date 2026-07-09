@@ -306,16 +306,18 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
   });
 
   // ─── Room invites ──────────────────────────────────────────────────────
+  // 🐛 FIX (invite accept broken for private rooms) — this used to be a
+  // pure notification relay with no server-side bookkeeping at all, so the
+  // eventual joinRoom() call from the invitee had no way to skip the
+  // password check. rooms.inviteToRoom() now records the invite on the
+  // room itself (see RoomState.invitedUserIds) — that's the piece joinRoom()
+  // checks to waive the password for this specific user. The "already in
+  // the room -> ignore" behavior is unchanged (inviteToRoom no-ops in that
+  // case rather than throwing, same as before).
   socket.on('room:invite', ({ roomId, targetUserId }) => {
     try {
-      const room = rooms.getRoomOrThrow(roomId);
-      if (!room.players.has(socket.data.userId)) {
-        throw new rooms.RoomError('NOT_IN_ROOM', 'You are not in this room.');
-      }
-      if (room.players.has(targetUserId)) {
-        // Target already in the room – ignore
-        return;
-      }
+      const room = rooms.inviteToRoom(roomId, socket.data.userId, targetUserId);
+      if (room.players.has(targetUserId)) return; // already in the room — nothing to notify
       const targetSocketId = socketIdByUser.get(targetUserId);
       if (targetSocketId) {
         io.to(targetSocketId).emit('room:invited', {

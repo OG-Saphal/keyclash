@@ -78,6 +78,14 @@ export interface RoomState {
   // 🆕 Part 5 — userIds of active players who've opted in to a rematch.
   // Cleared whenever the room transitions back to 'waiting'.
   returnToLobbyVotes: Set<string>;
+  // 🐛 FIX (invite accept broken for private rooms) — userIds explicitly
+  // invited by a CURRENT room member via room:invite. joinRoom() waives the
+  // password requirement for anyone in this set, since they've already been
+  // vetted by someone who's actually in the room — the invite itself is the
+  // authorization, the same way a party host handing you the door code is.
+  // Never sent to clients (see toDTO) and never trusted from the client —
+  // only server-side room:invite handling ever adds to it.
+  invitedUserIds: Set<string>;
 }
 
 /** Shape sent to clients — Maps don't serialize, password hash never leaves the server. */

@@ -180,6 +180,7 @@ export function createRoom(
     createdAt: now,
     lastActivityAt: now,
     returnToLobbyVotes: new Set(), // 🆕 Part 5
+    invitedUserIds: new Set(), // 🐛 FIX (invite accept broken for private rooms)
   };
 
   roomStore.set(id, room);
@@ -192,6 +193,37 @@ export function getRoomOrThrow(roomId: string): RoomState {
   return room;
 }
 
+/**
+ * 🆕 Records that `targetUserId` was invited into `roomId` by a CURRENT
+ * member of that room. This is the missing piece that made invite-accept
+ * silently fail for private rooms: room:invite used to be a pure
+ * fire-and-forget socket notification with no server-side memory of who'd
+ * been invited, so when the invitee's client called joinRoom() with no
+ * password (see InviteNotification.tsx — an invite payload never carried a
+ * password to begin with, nor should it have to), joinRoom() had no way to
+ * tell "someone who was just invited" apart from "a stranger guessing room
+ * codes" and rejected both with BAD_PASSWORD.
+ *
+ * Only a player who is ALREADY in the room can extend an invite (mirrors
+ * the validation the old inline handler in socket/handlers.ts used to do
+ * directly) — this is what makes the eventual password bypass in joinRoom()
+ * safe: trust is transitively vouched for by someone already vetted into
+ * the room, never self-asserted by the invitee.
+ */
+export function inviteToRoom(roomId: string, inviterUserId: string, targetUserId: string): RoomState {
+  const room = getRoomOrThrow(roomId);
+  if (!room.players.has(inviterUserId)) {
+    throw new RoomError('NOT_IN_ROOM', 'You are not in this room.');
+  }
+  if (room.players.has(targetUserId)) {
+    // Target already in the room — nothing to invite, same no-op as before.
+    return room;
+  }
+  room.invitedUserIds.add(targetUserId);
+  room.lastActivityAt = Date.now();
+  return room;
+}
+
 export function joinRoom(
   roomId: string,
   user: { userId: string; username: string; avatarUrl: string | null },
@@ -199,7 +231,12 @@ export function joinRoom(
 ): { room: RoomState; asSpectator: boolean } {
   const room = getRoomOrThrow(roomId);
 
-  if (room.settings.visibility === 'private') {
+  // 🐛 FIX (invite accept broken for private rooms / "direct enter without
+  // password for invite accept") — an explicitly-invited user skips the
+  // password check entirely. Everyone else still needs the real password,
+  // rate-limited exactly as before.
+  const isInvited = room.invitedUserIds.has(user.userId);
+  if (room.settings.visibility === 'private' && !isInvited) {
     checkRateLimit(user.userId, roomId);
     if (!password || hashPassword(password) !== room.settings.passwordHash) {
       throw new RoomError('BAD_PASSWORD', 'Incorrect room password.');
@@ -330,6 +367,7 @@ export function kickPlayer(roomId: string, hostUserId: string, targetUserId: str
   if (targetUserId === hostUserId) throw new RoomError('INVALID_ACTION', "Host can't kick themselves.");
   room.players.delete(targetUserId);
   room.returnToLobbyVotes.delete(targetUserId); // 🆕 Part 5
+  room.invitedUserIds.delete(targetUserId); // 🐛 FIX — a kicked player shouldn't be able to walk back in password-free
   room.lastActivityAt = Date.now();
   maybeTransitionToLobby(room); // 🆕 Part 5 — kicking someone might complete the vote
   return room;
