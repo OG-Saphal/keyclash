@@ -47,7 +47,7 @@ interface MultiplayerState {
   // ── Rooms ──
   refreshRoomList: () => void;
   createRoom: (input: CreateRoomInput) => Promise<RoomStateDTO | null>;
-  joinRoom: (roomId: string, password?: string) => Promise<boolean>;
+  joinRoom: (roomId: string, password?: string) => Promise<{ ok: boolean; code?: string }>;
   rejoinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
   setReady: (isReady: boolean) => void;
@@ -160,9 +160,14 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
     const res = await mp.joinRoom(roomId, password);
     if (res.ok && res.room) {
       set({ currentRoom: res.room, asSpectator: !!res.asSpectator });
-      return true;
+      return { ok: true };
     }
-    return false;
+    // 🐛 FIX (Bug #1) — surface the server's reason code (ROOM_NOT_FOUND /
+    // BAD_PASSWORD / RATE_LIMITED) instead of collapsing every failure into
+    // a bare `false`, so callers (e.g. RoomBrowserPage) can tell "wrong/
+    // missing password" apart from "room doesn't exist" and react
+    // accordingly (pop the password modal vs. show a real not-found error).
+    return { ok: false, code: res.code };
   },
   rejoinRoom: async (roomId) => {
     const res = await mp.rejoinRoom(roomId);

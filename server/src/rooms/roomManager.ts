@@ -116,11 +116,20 @@ export function toListEntry(room: RoomState): RoomListEntry {
   };
 }
 
-export function listPublicRooms(): RoomListEntry[] {
-  return roomStore
-    .all()
-    .filter((r) => r.settings.visibility === 'public')
-    .map(toListEntry);
+/**
+ * 🐛 FIX (Bug #2 — "private room not displaying on room view"): this used
+ * to be listPublicRooms(), which filtered private rooms out before they
+ * ever reached the client — so the browser had no way to show them, no
+ * matter how the UI handled visibility. The RoomBrowserPage UI already
+ * renders a lock icon and gates the join button behind a password modal
+ * for any entry with visibility 'private' (see toListEntry below, which
+ * still includes visibility on every entry, and never leaks passwordHash
+ * since RoomListEntry doesn't have that field at all). So all rooms —
+ * public and private — get listed; the password itself is still enforced
+ * only in joinRoom(), never here.
+ */
+export function listRooms(): RoomListEntry[] {
+  return roomStore.all().map(toListEntry);
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────

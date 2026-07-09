@@ -6,7 +6,7 @@ import { config } from './config.js';
 import { verifySupabaseToken } from './auth/verifySupabaseToken.js';
 import { registerRoomHandlers, socketIdByUser } from './socket/handlers.js';
 import { startCleanupSweep } from './rooms/cleanupSweep.js';
-import { registerVoiceHandlers } from './voice/voiceHandlers';
+import { registerVoiceHandlers } from './voice/voiceHandlers.js';
 
 // Inside connection handler:
 

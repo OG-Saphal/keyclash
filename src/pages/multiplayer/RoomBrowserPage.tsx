@@ -69,30 +69,55 @@ const RoomBrowserPage: React.FC = () => {
   const handleJoin = async (roomId: string, isPrivate: boolean) => {
     setJoinError(null);
     if (isPrivate) {
+      setPasswordInput('');
       setPendingPasswordRoomId(roomId);
       return;
     }
-    const ok = await joinRoom(roomId);
-    if (ok) navigate('/multiplayer/lobby');
+    const res = await joinRoom(roomId);
+    if (res.ok) navigate('/multiplayer/lobby');
     else setJoinError('Could not join that room — it may be full or no longer exist.');
   };
 
   const handlePasswordSubmit = async () => {
     if (!pendingPasswordRoomId) return;
-    const ok = await joinRoom(pendingPasswordRoomId, passwordInput);
-    if (ok) {
-      navigate('/multiplayer/lobby');
-    } else {
-      setJoinError('Incorrect password, or too many attempts — wait a minute and try again.');
+    const res = await joinRoom(pendingPasswordRoomId, passwordInput);
+    if (res.ok) {
       setPendingPasswordRoomId(null);
+      navigate('/multiplayer/lobby');
+    } else if (res.code === 'RATE_LIMITED') {
+      setJoinError('Too many attempts — wait a minute and try again.');
+      setPendingPasswordRoomId(null);
+    } else {
+      // Wrong password — keep the modal open so they can just retry, rather
+      // than bouncing them back out to the room list.
+      setJoinError('Incorrect password.');
+      setPasswordInput('');
     }
   };
 
+  // 🐛 FIX (Bug #1) — this used to call joinRoom() with no password and,
+  // on ANY failure, show "Room code not found" — including for a valid
+  // private-room code, since the server ack carried no reason. Now that the
+  // ack includes a code, a BAD_PASSWORD result (valid room, just needs a
+  // password) opens the same password modal used from the room list,
+  // instead of dead-ending on a misleading "not found" message.
   const handleEnterCode = async () => {
     if (!codeEntry.trim()) return;
-    const ok = await joinRoom(codeEntry.trim().toUpperCase());
-    if (ok) navigate('/multiplayer/lobby');
-    else setJoinError('Room code not found.');
+    setJoinError(null);
+    const code = codeEntry.trim().toUpperCase();
+    const res = await joinRoom(code);
+    if (res.ok) {
+      navigate('/multiplayer/lobby');
+      return;
+    }
+    if (res.code === 'BAD_PASSWORD') {
+      setPasswordInput('');
+      setPendingPasswordRoomId(code);
+    } else if (res.code === 'RATE_LIMITED') {
+      setJoinError('Too many attempts — wait a minute and try again.');
+    } else {
+      setJoinError('Room code not found.');
+    }
   };
 
   // Input class – with subtle purple border

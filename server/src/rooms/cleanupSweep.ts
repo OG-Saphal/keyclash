@@ -1,7 +1,7 @@
 import type { Server } from 'socket.io';
 import { sweepStaleRooms, expireDisconnectGrace } from './roomManager.js';
 import { roomStore } from './roomStore.js';
-import { toDTO, listPublicRooms } from './roomManager.js';
+import { toDTO, listRooms  } from './roomManager.js';
 import { config } from '../config.js';
 
 export function startCleanupSweep(io: Server) {
@@ -17,7 +17,7 @@ export function startCleanupSweep(io: Server) {
       for (const id of destroyedIds) {
         io.to(`room:${id}`).emit('room:closed', { roomId: id, reason: 'idle_timeout' });
       }
-      io.emit('room:list_updated', listPublicRooms());
+      io.emit('room:list_updated', listRooms());
     }
   }, config.cleanupSweepIntervalMs);
 }

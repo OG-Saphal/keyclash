@@ -98,7 +98,10 @@ export function createRoom(input: CreateRoomInput): Promise<{ ok: boolean; room?
   return new Promise((resolve) => getSocket().emit('room:create', input, resolve));
 }
 
-export function joinRoom(roomId: string, password?: string): Promise<{ ok: boolean; room?: RoomStateDTO; asSpectator?: boolean }> {
+export function joinRoom(
+  roomId: string,
+  password?: string,
+): Promise<{ ok: boolean; room?: RoomStateDTO; asSpectator?: boolean; code?: string }> {
   return new Promise((resolve) => getSocket().emit('room:join', { roomId, password }, resolve));
 }
 

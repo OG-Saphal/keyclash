@@ -29,7 +29,7 @@ function broadcastRoom(io: Server, room: RoomState) {
 }
 
 function broadcastRoomList(io: Server) {
-  io.emit('room:list_updated', rooms.listPublicRooms());
+  io.emit('room:list_updated', rooms.listRooms());
 }
 
 function err(socket: Socket, event: string, e: unknown) {
@@ -45,7 +45,7 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
 
   // ── Room list ──
   socket.on('room:list_request', () => {
-    socket.emit('room:list_updated', rooms.listPublicRooms());
+    socket.emit('room:list_updated', rooms.listRooms());
   });
 
   // ── Create room ──
@@ -77,7 +77,17 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       broadcastRoomList(io);
     } catch (e) {
       err(socket, 'room:join', e);
-      cb?.({ ok: false });
+      // 🐛 FIX (Bug #1) — this used to ack with just { ok: false }, so every
+      // failure (room truly missing vs. private room needing a password vs.
+      // wrong password vs. rate-limited) looked identical to the client.
+      // That's why entering a private room's code always surfaced "Room
+      // code not found" even when the code was right and only a password
+      // was missing. The RoomError code (ROOM_NOT_FOUND / BAD_PASSWORD /
+      // RATE_LIMITED) is now included directly in the ack response, which
+      // is the single place the client awaits — no reliance on the
+      // separately-emitted 'error' event's timing relative to this ack.
+      const code = e instanceof rooms.RoomError ? e.code : 'UNKNOWN';
+      cb?.({ ok: false, code });
     }
   });
 
