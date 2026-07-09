@@ -2,6 +2,11 @@ import React, { useEffect } from 'react';
 import FriendsPage from './pages/FriendsPage';
 import FriendProfilePage from './pages/FriendProfilePage';
 import FriendsSidebar from './components/friends/FriendsSidebar';
+<<<<<<< HEAD
+=======
+import InviteNotification from './components/multiplayer/InviteNotification';
+import VoiceChatPanel from './components/multiplayer/VoiceChatPanel';
+>>>>>>> 5371130 (added voice feature in room)
 import {
   HashRouter,
   Routes,
@@ -157,7 +162,13 @@ const App: React.FC = () => {
       {/* Both components can coexist here */}
       <LeaveRoomConfirmModal />
       <FriendsSidebar />
+<<<<<<< HEAD
       <RoomStatusRouter /> {/* 🆕 Part 5 */}
+=======
+      <RoomStatusRouter />
+      <InviteNotification />
+      <VoiceChatPanel />
+>>>>>>> 5371130 (added voice feature in room)
       <Routes>
         {/* Auth routes (full-page, own layout) */}
         <Route path="/login" element={<LoginPage />} />

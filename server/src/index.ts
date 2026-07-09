@@ -6,6 +6,10 @@ import { config } from './config.js';
 import { verifySupabaseToken } from './auth/verifySupabaseToken.js';
 import { registerRoomHandlers, socketIdByUser } from './socket/handlers.js';
 import { startCleanupSweep } from './rooms/cleanupSweep.js';
+import { registerVoiceHandlers } from './voice/voiceHandlers';
+
+// Inside connection handler:
+
 
 const app = express();
 app.use(cors({ origin: config.corsOrigins }));
@@ -36,6 +40,11 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   // Store socket ID for invites & presence
   socketIdByUser.set(socket.data.userId, socket.id);
+  const userId = socket.data.userId;
+  if (userId) {
+    socket.join(`user:${userId}`);
+    console.log(`[auth] socket ${socket.id} joined user room user:${userId}`);
+  }
 
   // ─── Presence: broadcast online status ──
   // 1. Send the full online list to the newly connected user
@@ -48,6 +57,7 @@ io.on('connection', (socket) => {
 
   // Register all room handlers
   registerRoomHandlers(io, socket as any);
+  registerVoiceHandlers(io, socket);
 });
 
 startCleanupSweep(io);
