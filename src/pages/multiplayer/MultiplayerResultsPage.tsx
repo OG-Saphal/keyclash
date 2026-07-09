@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Trophy, Crown } from 'lucide-react';
+import {Trophy, Crown } from 'lucide-react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore'; // 🆕 Part 1
