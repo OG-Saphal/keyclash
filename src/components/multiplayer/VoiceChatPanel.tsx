@@ -82,13 +82,23 @@ const VoiceChatPanel: React.FC = () => {
         };
     }, [localStream, setLocalSpeaking, setLastActiveSpeaker]);
 
+    // Mic toggle + play all remote audio (user gesture!)
     const handleToggleMic = () => {
         voiceService.toggleMute();
+
+        // This loop runs during the click event → browser allows audio.play().
+        Object.values(audioRefs.current).forEach(audio => {
+            if (audio.paused) {
+                audio.play().catch(err =>
+                    console.warn('[voice] play error on mic click:', err.message)
+                );
+            }
+        });
     };
 
     if (!currentRoom || !localStream) return null;
 
-    // Determine whose avatar to show
+    // Decide whose avatar to show
     let speakerAvatarUrl: string | undefined;
     let speakerAltText = '';
     let isCurrentlySpeaking = false;
