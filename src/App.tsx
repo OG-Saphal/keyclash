@@ -2,11 +2,10 @@ import React, { useEffect } from 'react';
 import FriendsPage from './pages/FriendsPage';
 import FriendProfilePage from './pages/FriendProfilePage';
 import FriendsSidebar from './components/friends/FriendsSidebar';
-<<<<<<< HEAD
-=======
+
 import InviteNotification from './components/multiplayer/InviteNotification';
 import VoiceChatPanel from './components/multiplayer/VoiceChatPanel';
->>>>>>> 5371130 (added voice feature in room)
+
 import {
   HashRouter,
   Routes,
@@ -17,7 +16,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTypingStore } from './store/useTypingStore';
 import { useAuthStore } from './store/useAuthStore';
-import { useMultiplayerStore } from './store/useMultiplayerStore'; // 🆕 Part 5
+import { useMultiplayerStore } from './store/useMultiplayerStore';
 import { useTimer } from './hooks/useTimer';
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -26,7 +25,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ProfilePage from './pages/ProfilePage';
 import AccountPage from './pages/AccountPage';
-// 🆕 Multiplayer pages
+// Multiplayer pages
 import MultiplayerMenuPage from './pages/multiplayer/MultiplayerMenuPage';
 import CreateRoomPage from './pages/multiplayer/CreateRoomPage';
 import RoomBrowserPage from './pages/multiplayer/RoomBrowserPage';
@@ -34,8 +33,8 @@ import LobbyPage from './pages/multiplayer/LobbyPage';
 import QuickMatchSearchingPage from './pages/multiplayer/QuickMatchSearchingPage';
 import RacePage from './pages/multiplayer/RacePage';
 import MultiplayerResultsPage from './pages/multiplayer/MultiplayerResultsPage';
-import MultiplayerJoinPage from './pages/multiplayer/MultiplayerJoinPage'; // 🆕 Bug #8
-// 🆕 Shared across singleplayer + multiplayer pages
+import MultiplayerJoinPage from './pages/multiplayer/MultiplayerJoinPage';
+// Shared across singleplayer + multiplayer pages
 import ModeTabBar from './components/ModeTabBar';
 import LeaveRoomConfirmModal from './components/multiplayer/LeaveRoomConfirmModal';
 // Components
@@ -44,7 +43,7 @@ import Settings from './components/Settings';
 import Timer from './components/Timer';
 import LiveStats from './components/LiveStats';
 import WordDisplay from './components/WordDisplay';
-import WordProgress from './components/WordProgress'; 
+import WordProgress from './components/WordProgress';
 import RestartButton from './components/RestartButton';
 import Results from './components/Results';
 import Footer from './components/Footer';
@@ -153,32 +152,27 @@ const RoomStatusRouter: React.FC = () => {
 // ─── Root App with router ─────────────────────────────────────────────────────
 const App: React.FC = () => {
   const initializeAuth = useAuthStore(s => s.initializeAuth);
-  // Bootstrap auth state once on mount
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
   return (
     <HashRouter>
-      {/* Both components can coexist here */}
+      {/* These components are always mounted and driven by state */}
       <LeaveRoomConfirmModal />
       <FriendsSidebar />
-<<<<<<< HEAD
-      <RoomStatusRouter /> {/* 🆕 Part 5 */}
-=======
       <RoomStatusRouter />
       <InviteNotification />
       <VoiceChatPanel />
->>>>>>> 5371130 (added voice feature in room)
       <Routes>
-        {/* Auth routes (full-page, own layout) */}
+        {/* Auth routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/verify" element={<VerifyEmailPage />} />
-        {/* Authenticated routes (also full-page) */}
+        {/* Authenticated routes */}
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/account" element={<AccountPage />} />
-        {/* 🆕 Multiplayer routes */}
+        {/* Multiplayer routes */}
         <Route path="/multiplayer" element={<MultiplayerMenuPage />} />
         <Route path="/multiplayer/create" element={<CreateRoomPage />} />
         <Route path="/multiplayer/browse" element={<RoomBrowserPage />} />
@@ -186,9 +180,8 @@ const App: React.FC = () => {
         <Route path="/multiplayer/quick-match" element={<QuickMatchSearchingPage />} />
         <Route path="/multiplayer/race" element={<RacePage />} />
         <Route path="/multiplayer/results" element={<MultiplayerResultsPage />} />
-        {}
         <Route path="/multiplayer/join" element={<MultiplayerJoinPage />} />
-        {/* 🆕 Friend routes (from your friend) */}
+        {/* Friend routes */}
         <Route path="/friends" element={<FriendsPage />} />
         <Route path="/u/:username" element={<FriendProfilePage />} />
         {/* Default: typing app */}
