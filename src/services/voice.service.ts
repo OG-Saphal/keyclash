@@ -344,6 +344,27 @@ class VoiceService {
                 });
                 if (DEBUG_VOICE) console.log(`[voice] 📤 Answer sent to ${fromUserId}`);
             } else if (type === 'answer') {
+                // 🐛 FIX (leave+rejoin crash — "Called in wrong state: stable"):
+                // peerConnections is keyed only by userId, with nothing to
+                // distinguish a signal meant for the CURRENT connection from
+                // one left over from a PREVIOUS connection to the same peer
+                // (e.g. this user left and rejoined the same room quickly,
+                // reusing the same socket). A stale answer from the old
+                // offer/answer round can arrive after a fresh round with a
+                // brand-new pc has already completed, and applying it to an
+                // already-`stable` connection throws. We only ever expect an
+                // answer while we have an outstanding local offer — anything
+                // else is stale/duplicate and safe to drop; the legitimate,
+                // correctly-ordered new round is unaffected and still
+                // completes normally.
+                if (pc.signalingState !== 'have-local-offer') {
+                    if (DEBUG_VOICE) {
+                        console.log(
+                            `[voice] 🧹 Ignoring stale/duplicate answer from ${fromUserId} (pc state: ${pc.signalingState})`
+                        );
+                    }
+                    return;
+                }
                 this.makingOffer.delete(fromUserId);
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
                 await this.flushPendingCandidates(fromUserId, pc);
