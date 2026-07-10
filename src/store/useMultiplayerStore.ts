@@ -70,6 +70,11 @@ interface MultiplayerState {
 
 let progressInterval: ReturnType<typeof setInterval> | null = null;
 let lastReportedWordIndex = -1;
+// 🐛 FIX (cursor sync doesn't start until the 2nd word) — see the change
+// inside beginProgressReporting() below for the full explanation. Tracked
+// alongside lastReportedWordIndex since both are reset together whenever a
+// new progress-reporting session begins.
+let lastReportedCompletedChars = -1;
 
 export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   connectionStatus: 'disconnected',
@@ -224,28 +229,27 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
     const room = get().currentRoom;
     if (!room || progressInterval) return;
     lastReportedWordIndex = -1;
+    lastReportedCompletedChars = -1; // 🐛 FIX — see change-detection note below
     progressInterval = setInterval(() => {
       const typingState = useTypingStore.getState();
       if (typingState.phase !== 'running') return;
       const currentRoom = get().currentRoom;
       if (!currentRoom) return;
-      // Only emit when something actually changed, to avoid spamming
-      // identical progress packets while the player is mid-word.
-      if (typingState.currentWordIndex === lastReportedWordIndex && typingState.metrics.wpm === 0) return;
-      lastReportedWordIndex = typingState.currentWordIndex;
-      // 🐛 FIX (Part 1) — completedChars used to be derived from the
-      // player's raw typed length (currentInput.length), so the broadcast
-      // progress cursor kept advancing right through an uncorrected typo
-      // instead of freezing. It's now derived from getFrozenOffsetInWord(),
-      // which stops advancing at the first incorrect character in the
-      // CURRENT word — distance already banked from earlier, COMPLETED
-      // words is untouched, since those are already finalized/correct-or-not
-      // and don't get revisited. This is the single place completedChars is
-      // computed before race:progress goes out, so both the local self
-      // cursor (SelfCursorOverlay.tsx, which computes the identical value
-      // for its own rendering) and every peer's PeerCursorOverlay
-      // automatically see the frozen value — no changes needed in either
-      // overlay component for the freeze behavior itself.
+      // 🐛 FIX (Part 1, completedChars) — completedChars used to be derived
+      // from the player's raw typed length (currentInput.length), so the
+      // broadcast progress cursor kept advancing right through an
+      // uncorrected typo instead of freezing. It's now derived from
+      // getFrozenOffsetInWord(), which stops advancing at the first
+      // incorrect character in the CURRENT word — distance already banked
+      // from earlier, COMPLETED words is untouched, since those are
+      // already finalized/correct-or-not and don't get revisited. This is
+      // the single place completedChars is computed before race:progress
+      // goes out, so both the local self cursor (SelfCursorOverlay.tsx,
+      // which computes the identical value for its own rendering) and
+      // every peer's PeerCursorOverlay automatically see the frozen value
+      // — no changes needed in either overlay component for the freeze
+      // behavior itself. Moved ABOVE the change-detection check below so
+      // that check can compare against the real, current value.
       const currentWord = typingState.words[typingState.currentWordIndex];
       const frozenOffsetInWord = currentWord
         ? getFrozenOffsetInWord(currentWord, typingState.currentInput.length)
@@ -255,6 +259,26 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         typingState.currentWordIndex,
         frozenOffsetInWord,
       );
+      // 🐛 FIX (cursor sync doesn't start until the 2nd word) — this used to
+      // gate on `currentWordIndex === lastReportedWordIndex && wpm === 0`.
+      // WPM (net WPM = completed-correct-words / minutes) only changes once
+      // a full word has been finalized, so it stays exactly 0 for the
+      // entire time a player is still typing their very first word — the
+      // old condition therefore skipped every tick during that whole
+      // window, and peers never saw a progress update (their cursor stayed
+      // frozen at the start) until the player finished word 0 and moved on
+      // to word 1. The gate now compares the actual frozen character
+      // offset (completedChars) instead of wpm, so any real forward (or
+      // corrective) movement within the current word — not just completed
+      // words — is emitted, right from the very first keystroke.
+      if (
+        typingState.currentWordIndex === lastReportedWordIndex &&
+        completedChars === lastReportedCompletedChars
+      ) {
+        return;
+      }
+      lastReportedWordIndex = typingState.currentWordIndex;
+      lastReportedCompletedChars = completedChars;
       const elapsedMs = typingState.startTime ? Date.now() - typingState.startTime : 0;
       mp.sendProgress(currentRoom.id, {
         wordIndex: typingState.currentWordIndex,
@@ -271,6 +295,8 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
       clearInterval(progressInterval);
       progressInterval = null;
     }
+    lastReportedWordIndex = -1;
+    lastReportedCompletedChars = -1;
   },
   submitFinalResult: async () => {
     const room = get().currentRoom;

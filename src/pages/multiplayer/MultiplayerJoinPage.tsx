@@ -68,13 +68,37 @@ const MultiplayerJoinPage: React.FC = () => {
         return;
       }
       setPhase('joining');
-      const ok = await joinRoom(roomId);
-      if (ok) {
+      // 🐛 FIX (private room link "not working") — joinRoom() resolves to
+      // an object ({ ok, code? }), never a plain boolean. `if (ok)` was
+      // checking the truthiness of that OBJECT, which is always truthy —
+      // so this branch ran unconditionally, even when the join genuinely
+      // failed (room not found, wrong/missing password, rate-limited).
+      // The client would navigate to /multiplayer/lobby anyway, find
+      // `currentRoom` was never actually set (joinRoom() in the store only
+      // sets it on a real success), and RoomStatusRouter would immediately
+      // bounce back out to /multiplayer — which is exactly the silent
+      // "link doesn't work" symptom, with the password prompt never given
+      // a chance to appear. Destructuring `.ok` here fixes that.
+      //
+      // This also fixes "don't ask a password for an invite link": the
+      // server already waives the password for a genuinely invited user
+      // (see roomManager.ts's `invitedUserIds` check), so their very first
+      // no-password attempt here already succeeds server-side — now that
+      // success is actually recognized, they go straight to the lobby
+      // instead of ever seeing a password prompt.
+      const res = await joinRoom(roomId);
+      if (res.ok) {
         navigate('/multiplayer/lobby', { replace: true });
+      } else if (res.code === 'ROOM_NOT_FOUND') {
+        setPhase('error');
+        setError('This room no longer exists.');
+      } else if (res.code === 'RATE_LIMITED') {
+        setPhase('error');
+        setError('Too many attempts — wait a minute and try again.');
       } else {
-        // Most common cause of a first-try failure is a private room
-        // needing a password; room-not-found/full also land here, so the
-        // password prompt doubles as a retry step either way.
+        // BAD_PASSWORD (or an unrecognized code) — most common cause of a
+        // first-try failure for a private room; also doubles as a general
+        // retry step for anything else that isn't explicitly handled above.
         setPhase('password');
       }
     })();
@@ -83,9 +107,15 @@ const MultiplayerJoinPage: React.FC = () => {
   const retryWithPassword = async () => {
     setError(null);
     setPhase('joining');
-    const ok = await joinRoom(roomId, password);
-    if (ok) {
+    // 🐛 FIX (same truthiness bug as the initial attempt above) — `ok` was
+    // an object, not a boolean, so this always looked successful even on a
+    // genuinely wrong password.
+    const res = await joinRoom(roomId, password);
+    if (res.ok) {
       navigate('/multiplayer/lobby', { replace: true });
+    } else if (res.code === 'RATE_LIMITED') {
+      setError('Too many attempts — wait a minute and try again.');
+      setPhase('password');
     } else {
       setError('Incorrect password, or the room may be full or no longer exist.');
       setPhase('password');

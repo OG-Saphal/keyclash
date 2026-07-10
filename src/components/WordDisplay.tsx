@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useCallback } from 'react';
+import { Lock } from 'lucide-react';
 import { useTypingStore } from '../store/useTypingStore';
 import { useKeyboardCapture } from '../hooks/useKeyboardCapture';
 import { getFrozenOffsetInWord } from '../utils/multiplayerCursor';
@@ -128,7 +129,7 @@ const WordDisplay: React.FC<{ hideCaretWhenSynced?: boolean }> = ({ hideCaretWhe
   const currentWordIndex = useTypingStore(s => s.currentWordIndex);
   const currentInput = useTypingStore(s => s.currentInput);
   const phase = useTypingStore(s => s.phase);
-  const { inputRef, onKeyDown, onInputChange } = useKeyboardCapture();
+  const { inputRef, onKeyDown, onKeyUp, onInputChange, capsLockOn } = useKeyboardCapture();
   const containerRef = useRef<HTMLDivElement>(null);
   const currentWordRef = useRef<HTMLSpanElement>(null);
   // Track the row offset so we only scroll when the current word moves to a new line
@@ -172,6 +173,7 @@ const WordDisplay: React.FC<{ hideCaretWhenSynced?: boolean }> = ({ hideCaretWhe
         value={currentInput}
         onChange={onInputChange}
         onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
         className="absolute opacity-0 w-0 h-0 pointer-events-none"
         autoComplete="off"
         autoCorrect="off"
@@ -184,6 +186,20 @@ const WordDisplay: React.FC<{ hideCaretWhenSynced?: boolean }> = ({ hideCaretWhe
       <div
         className="relative rounded-2xl bg-track bg-track-sheen shadow-dash px-6 py-5"
       >
+        {/* ✨ Feature — Caps Lock indicator. Shared by solo + multiplayer
+            since both render through this same component; absolutely
+            positioned so it never shifts the track's layout when it
+            appears/disappears. */}
+        {capsLockOn && (
+          <div
+            className="absolute -top-3 right-4 z-20 flex items-center gap-1.5 rounded-full text-white text-xs font-semibold px-3 py-1 shadow-md animate-fadeIn select-none"
+            style={{ backgroundColor: 'rgb(var(--status-error) / 0.92)' }}
+            role="status"
+          >
+            <Lock className="w-3 h-3" />
+            Caps Lock is on
+          </div>
+        )}
         <div
           ref={containerRef}
           data-word-scroll-container // 🆕 Part 3 — stable lookup hook so PeerCursorOverlay/SelfCursorOverlay can find the actual scrolling/clipping box for visibility checks; no visual or behavioral change on its own

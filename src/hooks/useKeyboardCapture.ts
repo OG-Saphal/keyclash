@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTypingStore } from '../store/useTypingStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 
@@ -37,6 +37,20 @@ export function useKeyboardCapture() {
   const currentRoom = useMultiplayerStore(s => s.currentRoom);
   const asSpectator = useMultiplayerStore(s => s.asSpectator);
   const inMultiplayerRoom = !!currentRoom;
+  // ✨ Feature — Caps Lock indicator (solo + multiplayer). This hook is
+  // already the single shared keystroke entry point for both TypingView
+  // (solo) and RacePage (multiplayer) — see the file-level note above — so
+  // detecting it here means both modes get the indicator automatically with
+  // no per-mode wiring. `getModifierState('CapsLock')` is read on every
+  // keydown AND keyup (not just keydown) so the indicator updates the
+  // instant Caps Lock is toggled off, not just the next time a key happens
+  // to go down.
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const syncCapsLockState = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === 'function') {
+      setCapsLockOn(e.getModifierState('CapsLock'));
+    }
+  }, []);
 
   // Focus the hidden input whenever the test is idle or running — except
   // for spectators, who should never be able to type at all (Bug #7).
@@ -59,6 +73,11 @@ export function useKeyboardCapture() {
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // ✨ Feature — Caps Lock indicator. Runs before the spectator
+      // early-return below on purpose: it only ever calls setCapsLockOn,
+      // never handleKeyDown/handleInput, so it can't let a spectator drive
+      // the engine — it's just informational and safe either way.
+      syncCapsLockState(e);
       // Bug #7 — spectators shouldn't be able to drive the typing engine
       // at all; swallow every keystroke before it reaches handleKeyDown.
       if (asSpectator) {
@@ -96,5 +115,15 @@ export function useKeyboardCapture() {
     [handleInput, asSpectator]
   );
 
-  return { inputRef, onKeyDown, onInputChange, disabled: asSpectator };
+  // ✨ Feature — Caps Lock indicator. Separate from onKeyDown so releasing
+  // Caps Lock (or any key) updates the indicator immediately via keyup too,
+  // rather than waiting for the next keydown to notice the state changed.
+  const onKeyUp = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      syncCapsLockState(e);
+    },
+    [syncCapsLockState]
+  );
+
+  return { inputRef, onKeyDown, onKeyUp, onInputChange, capsLockOn, disabled: asSpectator };
 }

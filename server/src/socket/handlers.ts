@@ -406,12 +406,33 @@ function createMatchRoom(io: Server, [a, b]: [QueueEntry, QueueEntry]) {
     try {
       const started = rooms.startRace(room.id, a.userId);
       io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
+      // 🐛 FIX (Quick Match typing not working) — startRace() alone was
+      // never enough for clients to actually start typing: RacePage.tsx
+      // only calls loadExternalWords()/startTest() once it receives the
+      // dedicated 'race:words' event (see the 'lobby:start' handler above,
+      // which emits it right after startRace()). This quick-match path
+      // called startRace() and only broadcast 'room:updated' — which
+      // carries startTimestamp but NOT raceWords — so raceWords in the
+      // client store stayed null forever, wordsLoadedRef never flipped,
+      // and the countdown-complete effect's `wordsLoadedRef.current` guard
+      // silently skipped startTest()/beginProgressReporting() entirely.
+      // The engine simply never started, which is what looked like
+      // "typing not working". Emit the same event here, the same way.
+      io.to(`room:${room.id}`).emit('race:words', {
+        words: started.raceWords,
+        startTimestamp: started.startTimestamp,
+      });
     } catch (firstErr) {
       try {
         // both players not marked ready by default for quick-match; force it
         for (const p of room.players.values()) p.isReady = true;
         const started = rooms.startRace(room.id, a.userId);
         io.to(`room:${room.id}`).emit('room:updated', rooms.toDTO(started));
+        // 🐛 FIX (Quick Match typing not working) — same fix on the retry path.
+        io.to(`room:${room.id}`).emit('race:words', {
+          words: started.raceWords,
+          startTimestamp: started.startTimestamp,
+        });
       } catch (secondErr) {
         console.error(`[quickmatch] failed to start race for room ${room.id}:`, secondErr);
         io.to(`room:${room.id}`).emit('error', {
