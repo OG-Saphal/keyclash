@@ -1,5 +1,5 @@
 // VoiceChatPanel.tsx
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useMultiplayerStore } from '../../store/useMultiplayerStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { voiceService } from '../../services/voice.service';
@@ -21,6 +21,7 @@ const VoiceChatPanel: React.FC = () => {
         setLocalSpeaking,
         setLastActiveSpeaker,
     } = useVoiceStore();
+
     const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
     const localAnalyserRef = useRef<AnalyserNode | null>(null);
     const localAnimFrameRef = useRef<number | null>(null);
@@ -37,22 +38,20 @@ const VoiceChatPanel: React.FC = () => {
         return map;
     }, [currentRoom?.players]);
 
-    // Join/leave voice strictly on room identity change
+    // ── Join/leave voice ──
     useEffect(() => {
         const roomId = currentRoom?.id;
-
         if (roomId) {
             voiceService.joinVoice();
         } else {
             voiceService.leaveVoice();
         }
-
         return () => {
             voiceService.leaveVoice();
         };
     }, [currentRoom?.id]);
 
-    // Local speaking detection with debug log
+    // ── Local speaking detection ──
     useEffect(() => {
         if (!localStream) return;
         let ctx: AudioContext | null = null;
@@ -90,18 +89,24 @@ const VoiceChatPanel: React.FC = () => {
         };
     }, [localStream, setLocalSpeaking, setLastActiveSpeaker]);
 
-    const handleToggleMic = () => voiceService.toggleMute();
+    // ─── Force‑play on user gesture ──────────────────────────────────────────
+    const handleUserInteraction = useCallback(() => {
+        voiceService.forcePlayAllPeerAudio();
+    }, []);
 
-    // Log render count / peer count
-    useEffect(() => {
-        if (DEBUG_VOICE) {
-            console.log(`[voice] 🖥️ VoiceChatPanel rendered, ${Object.keys(peers).length} peers`);
+    const handleToggleMic = useCallback(() => {
+        voiceService.toggleMute();
+        // If we just unmuted, force playback to resume peer audio
+        if (!useVoiceStore.getState().isMuted) {
+            voiceService.forcePlayAllPeerAudio();
         }
-    }, [peers]);
+    }, []);
+
+    // ─── Render ──────────────────────────────────────────────────────────────
 
     if (!currentRoom || !localStream) return null;
 
-    // Speaker avatar
+    // Determine speaker avatar
     let speakerAvatarUrl: string | undefined;
     let speakerAltText = '';
     let isCurrentlySpeaking = false;
@@ -135,12 +140,19 @@ const VoiceChatPanel: React.FC = () => {
     return (
         <>
             {peerAudios}
-            <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-full
-                      bg-primary/90 dark:bg-secondary/90 backdrop-blur-md
-                      shadow-lg shadow-black/20 border border-white/10
-                      px-4 py-2 transition-colors duration-300">
+            {/* Entire panel is clickable to trigger force‑play */}
+            <div
+                className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-full
+                          bg-primary/90 dark:bg-secondary/90 backdrop-blur-md
+                          shadow-lg shadow-black/20 border border-white/10
+                          px-4 py-2 transition-colors duration-300 cursor-pointer"
+                onClick={handleUserInteraction}
+            >
                 <button
-                    onClick={handleToggleMic}
+                    onClick={(e) => {
+                        e.stopPropagation(); // prevent double‑trigger
+                        handleToggleMic();
+                    }}
                     title={isMuted ? 'Unmute mic' : 'Mute mic'}
                     className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200
                       ${isMuted
@@ -173,15 +185,15 @@ const VoiceChatPanel: React.FC = () => {
             </div>
 
             <style>{`
-        @keyframes pulse-ring {
-          0% { box-shadow: 0 0 4px rgba(59,130,246,0.4); }
-          50% { box-shadow: 0 0 14px rgba(59,130,246,0.7); }
-          100% { box-shadow: 0 0 4px rgba(59,130,246,0.4); }
-        }
-        .animate-pulse-ring {
-          animation: pulse-ring 1.5s infinite;
-        }
-      `}</style>
+                @keyframes pulse-ring {
+                    0% { box-shadow: 0 0 4px rgba(59,130,246,0.4); }
+                    50% { box-shadow: 0 0 14px rgba(59,130,246,0.7); }
+                    100% { box-shadow: 0 0 4px rgba(59,130,246,0.4); }
+                }
+                .animate-pulse-ring {
+                    animation: pulse-ring 1.5s infinite;
+                }
+            `}</style>
         </>
     );
 };

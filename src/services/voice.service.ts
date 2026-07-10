@@ -1,4 +1,4 @@
-// voice.service.ts – FULLY FIXED (all fixes included)
+// voice.service.ts – FULLY FIXED (all fixes included) + force‑play method
 import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
@@ -204,6 +204,15 @@ class VoiceService {
         store.setMuted(muted);
         this.socket?.emit('voice:mute-state', { userId: this.userId, muted });
         if (DEBUG_VOICE) console.log(`[voice] 🎤 Mute toggled: ${muted ? '🔇 MUTED' : '🔊 UNMUTED'}`);
+    }
+
+    /**
+     * Force all peer audio elements to play.
+     * Call this on a user gesture (e.g., clicking the voice panel or mute button).
+     */
+    forcePlayAllPeerAudio() {
+        if (DEBUG_VOICE) console.log('[voice] 🔔 Force‑play all peer audio');
+        useVoiceStore.getState().triggerForcePlay();
     }
 
     private createPeerConnection(peerId: string, isInitiator: boolean) {
