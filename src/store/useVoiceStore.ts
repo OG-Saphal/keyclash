@@ -85,7 +85,19 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
             localSpeaking: false,
             peers: {},
             lastActiveSpeaker: null,
-            audioUnlocked: false,
+            // 🐛 FIX (root cause — audio silently muted after leave/rejoin):
+            // audioUnlocked reflects whether THIS BROWSER TAB has ever had a
+            // user gesture unlock its AudioContext/autoplay — it has nothing
+            // to do with any particular voice session. AudioUnlocker.tsx only
+            // arms its click/touch/keydown listeners ONCE per page load
+            // ({ once: true }, removed after firing), so once it fires there
+            // is no mechanism to ever set this back to true again in the same
+            // tab. Resetting it to false here on every leaveVoice() meant
+            // every peer's <audio> element came back muted
+            // (audio.muted = !audioUnlocked in VoicePeerAudio.tsx) after any
+            // leave+rejoin that didn't happen to include a fresh page load —
+            // exactly matching "works after a hard refresh, breaks on
+            // in-app leave/rejoin". Deliberately NOT included in this reset.
             forcePlayCounter: 0,
         }),
 }));
