@@ -64,10 +64,28 @@ export function registerVoiceHandlers(io: Server, socket: Socket) {
     });
 
     socket.on('voice:signal', (payload: VoiceSignalPayload) => {
-        console.log(`[voice] signal from ${socket.data.userId} to ${payload.targetUserId} type=${payload.type}`);
+        const fromUserId = socket.data.userId;
+        console.log(`[voice] signal from ${fromUserId} to ${payload.targetUserId} type=${payload.type}`);
+
+        // 🐛 FIX (loophole — unscoped signal relay): previously this relayed
+        // to any user:${targetUserId} regardless of whether sender/target
+        // were still in the same voice room. Harmless while the roster stays
+        // in sync, but with no defense if it ever drifts (e.g. a ghost entry
+        // from a bug elsewhere) — a stale/kicked/left peer could still
+        // exchange offers/answers/ICE with someone in an active call. Require
+        // both sides to currently share a voice room before relaying.
+        if (!fromUserId) return;
+        const roomId = findUserRoom(fromUserId);
+        if (!roomId || !getVoiceUsers(roomId).includes(payload.targetUserId)) {
+            console.warn(
+                `[voice] dropped signal from ${fromUserId} to ${payload.targetUserId} — not co-members of a voice room`
+            );
+            return;
+        }
+
         io.to(`user:${payload.targetUserId}`).emit('voice:signal', {
             ...payload,
-            fromUserId: socket.data.userId,
+            fromUserId,
         });
     });
 

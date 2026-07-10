@@ -295,7 +295,18 @@ class VoiceService {
             if (this.makingOffer.has(fromUserId)) {
                 if (this.isPolite(fromUserId)) {
                     this.makingOffer.delete(fromUserId);
-                    this.pendingCandidates.delete(fromUserId);
+                    // 🐛 FIX (glare/ICE-candidate loss): do NOT clear
+                    // pendingCandidates here. Only the local ("polite" side's)
+                    // RTCPeerConnection is being torn down and recreated below —
+                    // the remote peer's ICE session (and any candidates it has
+                    // already sent us for the old PC) is still valid and needs
+                    // to be replayed against the NEW answerer PC via
+                    // flushPendingCandidates() right after setRemoteDescription.
+                    // Deleting the queue here silently dropped every ICE
+                    // candidate that arrived before the glare resolved — if
+                    // that batch contained the only usable candidate pair
+                    // (e.g. fast host/srflx candidates on a LAN), the peer
+                    // never connected and stayed silent.
                     if (pc) {
                         pc.close();
                         this.peerConnections.delete(fromUserId);

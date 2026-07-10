@@ -10,6 +10,17 @@ import type {
 import { COLOR_IDS, type ColorId } from './playerColors.js'; // 🆕 Part 1
 import { generateRaceWords } from '../game/wordGeneration.js';
 import { config } from '../config.js';
+// 🐛 FIX (voice-roster desync): game-room lifecycle events (leave/kick/
+// destroy) now proactively clean up voice-room membership instead of relying
+// solely on the client (voice:leave emit) or the socket's own disconnect
+// handler. This closes the gap where a slow tab close, a JS error before
+// VoiceChatPanel's cleanup effect runs, or a future refactor could leave a
+// "ghost" entry in the voice roster that other peers keep trying to dial.
+// roomManager.ts still has no knowledge of Socket.IO/`io` — it only updates
+// the in-memory voice roster; broadcasting a fresh 'voice:roster' to
+// remaining peers (if desired) stays the caller's (socket/handlers.ts's)
+// responsibility, same as every other room-mutation notification today.
+import { removeUserFromVoiceRoom, clearVoiceRoom } from '../voice/voiceManager.js';
 
 export class RoomError extends Error {
   constructor(public code: string, message: string) {
@@ -291,6 +302,12 @@ export function leaveRoom(roomId: string, userId: string): { room: RoomState | n
   room.returnToLobbyVotes.delete(userId); // 🆕 Part 5 — leaving player drops out of the vote count too
   room.lastActivityAt = Date.now();
 
+  // 🐛 FIX (voice-roster desync): the departing user may still be sitting in
+  // this room's voice roster (e.g. they left the game room via a path other
+  // than the normal "leave voice" flow). Remove them from voice immediately
+  // rather than waiting on the client or a disconnect event.
+  removeUserFromVoiceRoom(roomId, userId);
+
   // 🐛 FIX: previously this only destroyed the room when players.size === 0,
   // which meant a room with zero ACTIVE players but one or more lingering
   // spectators never got cleaned up — and if the departing user was the
@@ -306,6 +323,12 @@ export function leaveRoom(roomId: string, userId: string): { room: RoomState | n
 
   if (shouldDestroy) {
     roomStore.delete(roomId);
+    // 🐛 FIX (voice-roster desync): the game room is gone, so nothing will
+    // ever again call removeUserFromVoiceRoom for whoever's left in this
+    // room's voice roster (e.g. lingering spectators who never left voice).
+    // Purge the whole voice room here rather than leaving a ghost roster
+    // that outlives its game room indefinitely.
+    clearVoiceRoom(roomId);
     return { room, destroyed: true };
   }
 
@@ -369,6 +392,11 @@ export function kickPlayer(roomId: string, hostUserId: string, targetUserId: str
   room.returnToLobbyVotes.delete(targetUserId); // 🆕 Part 5
   room.invitedUserIds.delete(targetUserId); // 🐛 FIX — a kicked player shouldn't be able to walk back in password-free
   room.lastActivityAt = Date.now();
+  // 🐛 FIX (voice-roster desync): a kicked player's socket may well still be
+  // alive (they didn't disconnect, they got removed) and their own client
+  // may never fire voice:leave (tab already navigated away, JS error, etc).
+  // Remove them from this room's voice roster the moment they're kicked.
+  removeUserFromVoiceRoom(roomId, targetUserId);
   maybeTransitionToLobby(room); // 🆕 Part 5 — kicking someone might complete the vote
   return room;
 }
@@ -550,6 +578,11 @@ export function sweepStaleRooms(): string[] {
 
     if (empty || idle) {
       roomStore.delete(room.id);
+      // 🐛 FIX (voice-roster desync): same reasoning as leaveRoom's destroy
+      // path — a room reaped here for being empty/idle can still have a
+      // stale voice roster (e.g. spectators who never left voice). Purge it
+      // so it doesn't linger forever as a ghost.
+      clearVoiceRoom(room.id);
       destroyed.push(room.id);
     }
   }
