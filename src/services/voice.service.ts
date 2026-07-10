@@ -1,11 +1,10 @@
-// voice.service.ts
+// voice.service.ts – FULLY FIXED (all fixes included)
 import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
 import { useAuthStore } from '../store/useAuthStore';
 import type { Socket } from 'socket.io-client';
 
-// Enable/disable debug logs
 const DEBUG_VOICE = true;
 
 const ICE_SERVERS = {
@@ -56,7 +55,6 @@ class VoiceService {
         return this.userId! < peerId;
     }
 
-    // FIX: Single source of truth for local user ID
     private get localUserId(): string | null {
         if (this.userId) return this.userId;
         const user = useAuthStore.getState().user;
@@ -64,6 +62,27 @@ class VoiceService {
     }
 
     constructor() { }
+
+    private addLocalTracks(pc: RTCPeerConnection, peerId: string): void {
+        if (!this.localStream) {
+            console.warn(`[voice] ⚠️ No localStream to add tracks for ${peerId}`);
+            return;
+        }
+        const tracks = this.localStream.getTracks();
+        if (tracks.length === 0) {
+            console.warn(`[voice] ⚠️ No tracks in localStream for ${peerId}`);
+            return;
+        }
+        tracks.forEach(track => {
+            pc.addTrack(track, this.localStream!);
+            if (DEBUG_VOICE) {
+                console.log(`[voice] 🎵 Added track for ${peerId}, kind: ${track.kind}, enabled: ${track.enabled}`);
+            }
+        });
+        if (DEBUG_VOICE) {
+            console.log(`[voice] 🎵 Added ${tracks.length} track(s) to PC for ${peerId}`);
+        }
+    }
 
     private async ensureSocketAndListeners() {
         if (this.listenersSetup) return;
@@ -139,7 +158,6 @@ class VoiceService {
             return;
         }
 
-        // FIX: Use localUserId getter to filter self
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             if (DEBUG_VOICE) console.log('[voice] 📋 Received roster:', roster);
             const localId = this.localUserId;
@@ -188,7 +206,6 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] 🎤 Mute toggled: ${muted ? '🔇 MUTED' : '🔊 UNMUTED'}`);
     }
 
-    // FIX: Guard against self-connection
     private createPeerConnection(peerId: string, isInitiator: boolean) {
         if (peerId === this.localUserId) {
             if (DEBUG_VOICE) console.warn(`[voice] ⛔ Skipping self-connection for ${peerId}`);
@@ -205,15 +222,15 @@ class VoiceService {
         const pc = new RTCPeerConnection(ICE_SERVERS);
         this.peerConnections.set(peerId, pc);
 
-        if (this.localStream) {
-            this.localStream.getTracks().forEach(track => pc.addTrack(track, this.localStream!));
-        }
+        this.addLocalTracks(pc, peerId);
 
         pc.ontrack = (event) => {
             const remoteStream = new MediaStream();
             remoteStream.addTrack(event.track);
             useVoiceStore.getState().addPeerStream(peerId, remoteStream);
-            if (DEBUG_VOICE) console.log(`[voice] 📥 Received track for peer ${peerId}`);
+            if (DEBUG_VOICE) {
+                console.log(`[voice] 📥 Received track for peer ${peerId}, kind: ${event.track.kind}, enabled: ${event.track.enabled}`);
+            }
         };
 
         pc.onicecandidate = (event) => {
@@ -261,7 +278,6 @@ class VoiceService {
         }
     }
 
-    // FIX: Use localUserId and ignore self
     private handlePeerJoined(userId: string) {
         if (!userId || userId === this.localUserId) return;
         if (this.peerConnections.has(userId)) return;
@@ -299,7 +315,6 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] 🧹 Flushed ${queued.length} queued candidates for ${peerId}`);
     }
 
-    // FIX: Ignore signals from self
     private async handleSignal(payload: any) {
         const { type, fromUserId, sdp, candidate } = payload;
         if (!fromUserId) return;
@@ -317,18 +332,6 @@ class VoiceService {
             if (this.makingOffer.has(fromUserId)) {
                 if (this.isPolite(fromUserId)) {
                     this.makingOffer.delete(fromUserId);
-                    // 🐛 FIX (glare/ICE-candidate loss): do NOT clear
-                    // pendingCandidates here. Only the local ("polite" side's)
-                    // RTCPeerConnection is being torn down and recreated below —
-                    // the remote peer's ICE session (and any candidates it has
-                    // already sent us for the old PC) is still valid and needs
-                    // to be replayed against the NEW answerer PC via
-                    // flushPendingCandidates() right after setRemoteDescription.
-                    // Deleting the queue here silently dropped every ICE
-                    // candidate that arrived before the glare resolved — if
-                    // that batch contained the only usable candidate pair
-                    // (e.g. fast host/srflx candidates on a LAN), the peer
-                    // never connected and stayed silent.
                     if (pc) {
                         pc.close();
                         this.peerConnections.delete(fromUserId);
@@ -366,19 +369,6 @@ class VoiceService {
                 });
                 if (DEBUG_VOICE) console.log(`[voice] 📤 Answer sent to ${fromUserId}`);
             } else if (type === 'answer') {
-                // 🐛 FIX (leave+rejoin crash — "Called in wrong state: stable"):
-                // peerConnections is keyed only by userId, with nothing to
-                // distinguish a signal meant for the CURRENT connection from
-                // one left over from a PREVIOUS connection to the same peer
-                // (e.g. this user left and rejoined the same room quickly,
-                // reusing the same socket). A stale answer from the old
-                // offer/answer round can arrive after a fresh round with a
-                // brand-new pc has already completed, and applying it to an
-                // already-`stable` connection throws. We only ever expect an
-                // answer while we have an outstanding local offer — anything
-                // else is stale/duplicate and safe to drop; the legitimate,
-                // correctly-ordered new round is unaffected and still
-                // completes normally.
                 if (pc.signalingState !== 'have-local-offer') {
                     if (DEBUG_VOICE) {
                         console.log(
@@ -411,14 +401,12 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] ${payload.muted ? '🔇' : '🔊'} Peer ${payload.userId} ${payload.muted ? 'muted' : 'unmuted'}`);
     };
 
-    // FIX: Make roster the source of truth – both remove stale peers and add missing ones
     private handleRoster = (payload: { users: string[] }) => {
         const localId = this.localUserId;
         if (!localId) return;
 
         const rosterSet = new Set(payload.users.filter(id => id !== localId));
 
-        // Remove peers that are no longer in the roster
         for (const peerId of Array.from(this.peerConnections.keys())) {
             if (!rosterSet.has(peerId)) {
                 if (DEBUG_VOICE) console.log(`[voice] 🧹 Roster cleanup: removing ${peerId}`);
@@ -426,7 +414,6 @@ class VoiceService {
             }
         }
 
-        // Add peers that are in the roster but not connected yet
         for (const peerId of rosterSet) {
             if (!this.peerConnections.has(peerId)) {
                 if (DEBUG_VOICE) console.log(`[voice] 📥 Roster add: connecting to ${peerId}`);
@@ -450,7 +437,6 @@ class VoiceService {
         }
 
         this.joined = true;
-        // FIX: Use localUserId getter for filtering
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             const localId = this.localUserId;
             const rosterSet = new Set(roster.filter(id => id !== localId));
