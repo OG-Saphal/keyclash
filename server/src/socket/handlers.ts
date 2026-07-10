@@ -5,6 +5,7 @@ import { quickMatchQueue, type QueueEntry } from '../quickmatch/queue.js';
 import { recomputeFinalStats, type FinalSubmission } from '../game/metrics.js';
 import type { RoomState } from '../rooms/types.js';
 import type { ColorId } from '../rooms/playerColors.js';
+import { notifyVoicePeerLeft } from '../voice/voiceHandlers.js';
 
 interface AuthedSocketData {
   userId: string;
@@ -128,8 +129,19 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
     if (destroyed && room) {
       io.to(`room:${roomId}`).emit('room:closed', { roomId, reason: 'no_active_players' });
       for (const p of room.players.values()) activeRoomByUser.delete(p.userId);
+      // Room (and its voice roster) is gone entirely — no need to notify
+      // individual voice peers, remaining clients see 'room:closed' and
+      // tear their own voice connections down locally.
     } else if (room) {
       broadcastRoom(io, room);
+      // 🐛 FIX (root cause of "leave/rejoin voice sometimes doesn't work"):
+      // rooms.leaveRoom() already removed this user from the server-side
+      // voice roster, but the sockets still in the room were never told —
+      // their peerConnections Map keeps a stale/dead entry for this user,
+      // which silently blocks any future reconnection attempt from them.
+      // Broadcast the departure so remaining clients tear down their side
+      // of the connection too.
+      notifyVoicePeerLeft(io, roomId, socket.data.userId);
     }
     broadcastRoomList(io);
   });
@@ -176,6 +188,11 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
       io.to(`room:${roomId}`).emit('lobby:kicked', { targetUserId });
       activeRoomByUser.delete(targetUserId);
       broadcastRoom(io, room);
+      // 🐛 FIX (same root cause as room:leave): kickPlayer() already removed
+      // targetUserId from the voice roster server-side; tell the remaining
+      // voice peers so they don't keep a stale peerConnection entry that
+      // would block this user from ever reconnecting to voice later.
+      notifyVoicePeerLeft(io, roomId, targetUserId);
       broadcastRoomList(io);
     } catch (e) {
       err(socket, 'lobby:kick', e);
@@ -361,6 +378,11 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
         for (const p of remaining.players.values()) activeRoomByUser.delete(p.userId);
       } else if (remaining) {
         broadcastRoom(io, remaining);
+        // Note: voiceHandlers.ts's own 'disconnect' listener on this same
+        // socket already broadcasts voice:peer-left/voice:roster for this
+        // userId (removeUserFromAllVoiceRooms), so no extra notifyVoicePeerLeft
+        // call is needed here — this path is a real socket disconnect, not
+        // the room:leave/kick case where the socket stays alive.
         // 🆕 vote-completion-by-disconnect case
         if (remaining.status === 'waiting') broadcastRoomList(io);
       }

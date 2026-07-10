@@ -291,7 +291,19 @@ class VoiceService {
 
     private handlePeerJoined(userId: string) {
         if (!userId || userId === this.localUserId) return;
-        if (this.peerConnections.has(userId)) return;
+        // Defense-in-depth: don't trust a stale/dead connection object left
+        // over from a previous session with this peer (e.g. they left via
+        // room:leave/kick and we never got a matching peer-left/roster
+        // event to clean it up). A closed/failed/disconnected pc for a peer
+        // that's rejoining should never block a fresh connection attempt.
+        const existing = this.peerConnections.get(userId);
+        if (existing) {
+            if (existing.connectionState === 'connected' || existing.connectionState === 'connecting') {
+                return;
+            }
+            if (DEBUG_VOICE) console.log(`[voice] 🧟 Discarding stale pc for ${userId} (state: ${existing.connectionState})`);
+            this.removePeer(userId);
+        }
         if (DEBUG_VOICE) console.log(`[voice] 👤 Peer joined: ${userId}`);
         this.createPeerConnection(userId, true);
     }
@@ -353,6 +365,20 @@ class VoiceService {
                     if (DEBUG_VOICE) console.log(`[voice] 🛑 Ignoring duplicate offer from ${fromUserId}`);
                     return;
                 }
+            }
+        }
+
+        // Defense-in-depth: same stale-connection issue as handlePeerJoined —
+        // an offer arriving for a peerId we already have a `pc` for is only
+        // valid if that pc is actually alive. A closed/failed one (e.g. left
+        // over from before this peer rejoined) must be discarded, not reused,
+        // or the incoming offer/answer/candidates get applied to a dead
+        // connection and silently go nowhere.
+        if (pc && type === 'offer' && !this.makingOffer.has(fromUserId)) {
+            if (pc.connectionState === 'closed' || pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                if (DEBUG_VOICE) console.log(`[voice] 🧟 Replacing stale pc for ${fromUserId} (state: ${pc.connectionState}) before handling offer`);
+                this.removePeer(fromUserId);
+                pc = undefined;
             }
         }
 

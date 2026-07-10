@@ -8,6 +8,33 @@ import {
 } from './voiceManager.js';
 import type { VoiceSignalPayload, VoiceMuteStatePayload } from './types.js';
 
+/**
+ * 🐛 FIX (root cause — stale peer connections on room:leave / kick):
+ * roomManager.ts's leaveRoom()/kickPlayer() already remove the departing
+ * user from the server-side voice roster (removeUserFromVoiceRoom), but
+ * that only updates bookkeeping — it never told the *other* sockets still
+ * in that voice room. Those clients' voiceService keeps a live entry in its
+ * peerConnections Map for the user who left, because it never received
+ * 'voice:peer-left' or a fresh 'voice:roster'. Every later reconnection
+ * attempt from that user is then silently swallowed:
+ *   - handlePeerJoined() sees peerConnections.has(userId) === true and bails
+ *   - handleSignal() sees an existing (stale) `pc` and reuses it instead of
+ *     creating a fresh RTCPeerConnection to answer the new offer
+ * This exported helper lets any caller that mutates voice-room membership
+ * outside of voiceHandlers.ts's own socket listeners (i.e. socket/handlers.ts,
+ * for 'room:leave' and 'lobby:kick') notify the remaining voice participants,
+ * exactly like handleVoiceLeave()/the disconnect listener already do.
+ */
+export function notifyVoicePeerLeft(io: Server, roomId: string, userId: string) {
+    const roster = getVoiceUsers(roomId);
+    // userId has already been removed from the server-side roster by the
+    // caller (roomManager.ts) — roster here is just "everyone left".
+    roster.forEach(uid => {
+        io.to(`user:${uid}`).emit('voice:peer-left', userId);
+        io.to(`user:${uid}`).emit('voice:roster', { users: roster });
+    });
+}
+
 export function registerVoiceHandlers(io: Server, socket: Socket) {
     console.log(`[voice] registering handlers for socket ${socket.id}`);
 
