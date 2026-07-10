@@ -1,4 +1,4 @@
-// voice.service.ts – FULLY FIXED (all fixes included) + force‑play method
+// voice.service.ts – TEMPORARY TEST: ignore mute states, force peers unmuted
 import { connectMultiplayerSocket } from './multiplayer.service';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useMultiplayerStore } from '../store/useMultiplayerStore';
@@ -237,6 +237,8 @@ class VoiceService {
             const remoteStream = new MediaStream();
             remoteStream.addTrack(event.track);
             useVoiceStore.getState().addPeerStream(peerId, remoteStream);
+            // 🔥 TEMPORARY TEST: force this peer to be considered unmuted in the store
+            useVoiceStore.getState().setPeerMuted(peerId, false);
             if (DEBUG_VOICE) {
                 console.log(`[voice] 📥 Received track for peer ${peerId}, kind: ${event.track.kind}, enabled: ${event.track.enabled}`);
             }
@@ -405,9 +407,10 @@ class VoiceService {
         }
     }
 
+    // 🔥 TEMPORARY TEST: ignore incoming mute state updates
     private handleMuteState = (payload: { userId: string; muted: boolean }) => {
-        useVoiceStore.getState().setPeerMuted(payload.userId, payload.muted);
-        if (DEBUG_VOICE) console.log(`[voice] ${payload.muted ? '🔇' : '🔊'} Peer ${payload.userId} ${payload.muted ? 'muted' : 'unmuted'}`);
+        // useVoiceStore.getState().setPeerMuted(payload.userId, payload.muted);
+        if (DEBUG_VOICE) console.log(`[voice] ${payload.muted ? '🔇' : '🔊'} Peer ${payload.userId} ${payload.muted ? 'muted' : 'unmuted'} (IGNORED for test)`);
     };
 
     private handleRoster = (payload: { users: string[] }) => {
