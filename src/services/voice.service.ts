@@ -56,6 +56,13 @@ class VoiceService {
         return this.userId! < peerId;
     }
 
+    // FIX: Single source of truth for local user ID
+    private get localUserId(): string | null {
+        if (this.userId) return this.userId;
+        const user = useAuthStore.getState().user;
+        return user?.id ?? null;
+    }
+
     constructor() { }
 
     private async ensureSocketAndListeners() {
@@ -132,10 +139,12 @@ class VoiceService {
             return;
         }
 
+        // FIX: Use localUserId getter to filter self
         this.socket!.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
             if (DEBUG_VOICE) console.log('[voice] 📋 Received roster:', roster);
+            const localId = this.localUserId;
             roster.forEach(peerId => {
-                if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
+                if (peerId !== localId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
                 }
             });
@@ -179,7 +188,13 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] 🎤 Mute toggled: ${muted ? '🔇 MUTED' : '🔊 UNMUTED'}`);
     }
 
+    // FIX: Guard against self-connection
     private createPeerConnection(peerId: string, isInitiator: boolean) {
+        if (peerId === this.localUserId) {
+            if (DEBUG_VOICE) console.warn(`[voice] ⛔ Skipping self-connection for ${peerId}`);
+            return;
+        }
+
         if (this.peerConnections.has(peerId)) {
             if (DEBUG_VOICE) console.log(`[voice] ⏭️ Peer ${peerId} already connected, skipping`);
             return;
@@ -246,8 +261,9 @@ class VoiceService {
         }
     }
 
+    // FIX: Use localUserId and ignore self
     private handlePeerJoined(userId: string) {
-        if (!userId || userId === this.userId) return;
+        if (!userId || userId === this.localUserId) return;
         if (this.peerConnections.has(userId)) return;
         if (DEBUG_VOICE) console.log(`[voice] 👤 Peer joined: ${userId}`);
         this.createPeerConnection(userId, true);
@@ -283,9 +299,15 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] 🧹 Flushed ${queued.length} queued candidates for ${peerId}`);
     }
 
+    // FIX: Ignore signals from self
     private async handleSignal(payload: any) {
         const { type, fromUserId, sdp, candidate } = payload;
         if (!fromUserId) return;
+
+        if (fromUserId === this.localUserId) {
+            if (DEBUG_VOICE) console.log(`[voice] ⛔ Ignoring signal from self (${fromUserId})`);
+            return;
+        }
 
         if (DEBUG_VOICE) console.log(`[voice] 📡 Signal from ${fromUserId}`, { type, sdp: !!sdp, candidate: !!candidate });
 
@@ -389,14 +411,28 @@ class VoiceService {
         if (DEBUG_VOICE) console.log(`[voice] ${payload.muted ? '🔇' : '🔊'} Peer ${payload.userId} ${payload.muted ? 'muted' : 'unmuted'}`);
     };
 
+    // FIX: Make roster the source of truth – both remove stale peers and add missing ones
     private handleRoster = (payload: { users: string[] }) => {
-        const currentPeers = Array.from(this.peerConnections.keys());
-        currentPeers.forEach(peerId => {
-            if (!payload.users.includes(peerId)) {
+        const localId = this.localUserId;
+        if (!localId) return;
+
+        const rosterSet = new Set(payload.users.filter(id => id !== localId));
+
+        // Remove peers that are no longer in the roster
+        for (const peerId of Array.from(this.peerConnections.keys())) {
+            if (!rosterSet.has(peerId)) {
                 if (DEBUG_VOICE) console.log(`[voice] 🧹 Roster cleanup: removing ${peerId}`);
                 this.removePeer(peerId);
             }
-        });
+        }
+
+        // Add peers that are in the roster but not connected yet
+        for (const peerId of rosterSet) {
+            if (!this.peerConnections.has(peerId)) {
+                if (DEBUG_VOICE) console.log(`[voice] 📥 Roster add: connecting to ${peerId}`);
+                this.createPeerConnection(peerId, true);
+            }
+        }
     };
 
     private async rejoinVoice() {
@@ -414,8 +450,10 @@ class VoiceService {
         }
 
         this.joined = true;
+        // FIX: Use localUserId getter for filtering
         this.socket?.emit('voice:join', { userId: this.userId, roomId: this.roomId }, (roster: string[]) => {
-            const rosterSet = new Set(roster.filter(id => id !== this.userId));
+            const localId = this.localUserId;
+            const rosterSet = new Set(roster.filter(id => id !== localId));
 
             for (const [peerId, pc] of this.peerConnections) {
                 if (!rosterSet.has(peerId)) {
@@ -427,7 +465,7 @@ class VoiceService {
             this.makingOffer.clear();
 
             roster.forEach(peerId => {
-                if (peerId !== this.userId && !this.peerConnections.has(peerId)) {
+                if (peerId !== localId && !this.peerConnections.has(peerId)) {
                     this.createPeerConnection(peerId, true);
                 }
             });
