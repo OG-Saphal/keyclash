@@ -1,4 +1,4 @@
-// VoicePeerAudio.tsx
+// components/voice/VoicePeerAudio.tsx
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useVoiceStore } from '../../store/useVoiceStore';
 
@@ -14,6 +14,7 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
     const ctxRef = useRef<AudioContext | null>(null);
     const animFrameRef = useRef<number | null>(null);
     const audioUnlocked = useVoiceStore((s) => s.audioUnlocked);
+    const forcePlayCounter = useVoiceStore((s) => s.forcePlayCounter);   // 👈 new
 
     useImperativeHandle(ref, () => audioRef.current!, [audioRef]);
 
@@ -26,11 +27,13 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
             audio.srcObject = stream;
             audio.volume = 1.0;
             if (DEBUG_VOICE) console.log(`[voice] 🔊 Attached stream for peer ${peerId}`);
-            audio.play().catch((err) => {
-                if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-                    console.warn(`[voice] play error for ${peerId}:`, err.message);
-                }
-            });
+            audio.play()
+                .then(() => console.log(`[voice] ✅ Audio play succeeded for ${peerId}`))
+                .catch((err) => {
+                    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                        console.warn(`[voice] play error for ${peerId}:`, err.message);
+                    }
+                });
         }
 
         return () => {
@@ -50,15 +53,32 @@ const VoicePeerAudio = forwardRef<HTMLAudioElement, Props>(({ peerId, stream }, 
         if (DEBUG_VOICE) console.log(`[voice] ${audioUnlocked ? '🔓' : '🔒'} Peer ${peerId} ${audioUnlocked ? 'unmuted' : 'muted'}`);
 
         if (audioUnlocked && audio.paused) {
-            audio.play().catch((err) => {
-                if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-                    console.warn(`[voice] retry play for ${peerId}:`, err.message);
-                }
-            });
+            audio.play()
+                .then(() => console.log(`[voice] ✅ Resume play succeeded for ${peerId}`))
+                .catch((err) => {
+                    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                        console.warn(`[voice] retry play for ${peerId}:`, err.message);
+                    }
+                });
         }
     }, [audioUnlocked, peerId]);
 
-    // 3) Speaking detection with debug logs
+    // 🆕 3) Force‑play on user interaction (via store counter)
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (forcePlayCounter > 0 && audio.paused) {
+            audio.play()
+                .then(() => console.log(`[voice] ✅ Force‑play succeeded for ${peerId}`))
+                .catch((err) => {
+                    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                        console.warn(`[voice] Force‑play error for ${peerId}:`, err.message);
+                    }
+                });
+        }
+    }, [forcePlayCounter, peerId]);
+
+    // 4) Speaking detection with debug logs
     useEffect(() => {
         if (!stream) return;
         let ctx: AudioContext | null = null;

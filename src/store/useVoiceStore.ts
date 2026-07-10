@@ -1,3 +1,4 @@
+// store/useVoiceStore.ts
 import { create } from 'zustand';
 
 export interface PeerState {
@@ -12,7 +13,8 @@ interface VoiceStore {
     localSpeaking: boolean;
     peers: Record<string, PeerState>;
     lastActiveSpeaker: string | null;
-    audioUnlocked: boolean;                     // 👈 new
+    audioUnlocked: boolean;
+    forcePlayCounter: number;                   // 👈 new
 
     setLocalStream: (stream: MediaStream | null) => void;
     setMuted: (muted: boolean) => void;
@@ -22,7 +24,8 @@ interface VoiceStore {
     setPeerMuted: (userId: string, muted: boolean) => void;
     setPeerSpeaking: (userId: string, speaking: boolean) => void;
     setLastActiveSpeaker: (userId: string | null) => void;
-    setAudioUnlocked: () => void;               // 👈 new
+    setAudioUnlocked: () => void;
+    triggerForcePlay: () => void;               // 👈 new
     clearPeers: () => void;
     reset: () => void;
 }
@@ -34,6 +37,7 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
     peers: {},
     lastActiveSpeaker: null,
     audioUnlocked: false,
+    forcePlayCounter: 0,                        // 👈 new
 
     setLocalStream: (stream) => set({ localStream: stream }),
     setMuted: (muted) => set({ isMuted: muted }),
@@ -72,6 +76,7 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
         })),
     setLastActiveSpeaker: (userId) => set({ lastActiveSpeaker: userId }),
     setAudioUnlocked: () => set({ audioUnlocked: true }),
+    triggerForcePlay: () => set((state) => ({ forcePlayCounter: state.forcePlayCounter + 1 })), // 👈 new
     clearPeers: () => set({ peers: {}, lastActiveSpeaker: null }),
     reset: () =>
         set({
@@ -81,5 +86,6 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
             peers: {},
             lastActiveSpeaker: null,
             audioUnlocked: false,
+            forcePlayCounter: 0,
         }),
 }));
