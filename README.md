@@ -1,156 +1,118 @@
-# KeyClash ⌨️
+<div align="center">
 
-A fast, minimal typing speed test — a Monkeytype-inspired SPA built with **React + Vite + TypeScript + Tailwind CSS + Zustand + Framer Motion**.
+# ⌨️ KeyClash
 
----
+**KeyClash is a fast, minimal typing speed test . Test your typing speed solo with live WPM and accuracy tracking, or challenge friends in real-time multiplayer races with voice chat, all with saved stats and a friends system to track your progress.**
+
+### 🔗 [Play KeyClash Now](https://OG-Saphal.github.io/keyclash)
+
+</div>
+
+<br>
 
 ## ✨ Features
 
-- **Real-time character feedback** — each character highlighted green (correct) or red (incorrect) as you type
-- **Blinking caret** that follows your current position
-- **Live metrics** — WPM, raw WPM, and accuracy update every second
-- **Configurable timer** — 15s / 30s / 60s / 120s
-- **Three word sets** — English 200, English 1k, Common words
-- **Results screen** — WPM, raw WPM, accuracy, correct/incorrect/total chars, words typed
-- **Restart anywhere** — press `Tab` at any point to start a new test
-- **Scroll-tracking** — the word area auto-scrolls so the current line always stays at the top
-- **Dark, minimal UI** — JetBrains Mono font, gold accent, no clutter
+### ⚡ Solo Typing Test
+- Choose **Time mode** (15 / 30 / 60 / 120 seconds) or **Word Count mode** (10 / 25 / 50 / 100 words)
+- Pick from three word sets: **English 200**, **English 1k**, or **Common words**
+- Every character you type is instantly marked correct or incorrect as you go
+- Live stats while you type — **WPM**, **raw WPM**, and **accuracy** update every second
+- A full results screen at the end, including a graph of your speed over the course of the test
+- A blinking caret and Caps Lock indicator so you always know what's happening
+- Press `Tab` anytime to restart with a fresh set of words
 
----
+### 🏆 Multiplayer Races
+- **Create a room** — set the mode, word count/duration, word set, and whether it's public or password-protected
+- **Invite friends directly**, or share a room code for anyone to join
+- **Browse public rooms** to jump into a race with strangers
+- **Quick Match** — get auto-paired with an opponent in seconds, no room setup needed
+- Everyone races the exact same text, generated fresh for each race so no one has an unfair advantage
+- Watch opponents' cursors move through the text in real time as they type
+- A synced countdown makes sure everyone starts at the exact same moment
+- If you don't want to race, you can join as a **spectator** and just watch
+- After the race: a podium, full leaderboard, and the option to vote for an instant rematch
 
-## 📁 Project Structure
+### 🎤 Voice Chat
+- Talk to your race opponents live, right in the room — no separate app needed
+- Mute yourself anytime; you can see who's currently speaking
 
-```
-keyclash/
-├── public/
-│   └── favicon.svg
-├── src/
-│   ├── components/
-│   │   ├── Footer.tsx
-│   │   ├── Header.tsx
-│   │   ├── LiveStats.tsx
-│   │   ├── RestartButton.tsx
-│   │   ├── Results.tsx
-│   │   ├── Settings.tsx
-│   │   ├── Timer.tsx
-│   │   └── WordDisplay.tsx
-│   ├── data/
-│   │   └── words.ts          # Static word lists
-│   ├── hooks/
-│   │   ├── useKeyboardCapture.ts  # Global input handler
-│   │   └── useTimer.ts            # Countdown interval
-│   ├── store/
-│   │   └── useTypingStore.ts  # Zustand global state
-│   ├── types/
-│   │   └── index.ts           # TypeScript interfaces
-│   ├── utils/
-│   │   └── typing.ts          # Word gen + metrics math
-│   ├── App.tsx
-│   ├── index.css
-│   └── main.tsx
-├── index.html
-├── package.json
-├── postcss.config.js
-├── tailwind.config.js
-├── tsconfig.json
-├── tsconfig.node.json
-└── vite.config.ts
-```
+### 👤 Accounts & Stats
+- Sign up with just an email and password
+- Every test you complete is saved to your profile automatically
+- Track your average WPM, total tests taken, and total time spent typing
+- Upload a profile picture and customize your display name
+- Export all your data or delete your account at any time — your data is yours
+- **No account? No problem.** Solo mode works instantly as a guest, and your results are still saved locally in your browser
 
----
+### 🧑‍🤝‍🧑 Friends
+- Search for other users and send friend requests
+- See who's currently online
+- Invite friends straight into your multiplayer room with one click
+- Visit friends' public profiles to see their stats
+
+### 🌗 Themes
+- Switch between a sleek dark theme and a clean light theme, anytime
+
+<br>
+
+## 🎮 How to Play
+
+### Solo mode
+| Action | What to do |
+|---|---|
+| Start the test | Just start typing — no button to press |
+| Move to the next word | Press `Space` |
+| Fix a typo | Press `Backspace` |
+| Go back a whole word | Press `Backspace` when your current word is empty |
+| Restart with new words | Press `Tab` anywhere on the page |
+
+### Multiplayer mode
+1. Go to the **Multiplayer** tab
+2. Either **Create a Room** (and share the code with friends), **Browse Rooms** to find a public race, or hit **Quick Match** for instant pairing
+3. Once everyone in the room is marked **Ready**, the host starts the race
+4. A countdown syncs everyone up — then type as fast and accurately as you can!
+5. First to finish (correctly) wins. Check the leaderboard afterward and vote to run it back
+
+<br>
 
 ## 🚀 Getting Started
 
-### Prerequisites
+You don't need to install anything — KeyClash runs entirely in your browser.
 
-- **Node.js** v18 or later
-- **npm** v9 or later (comes with Node)
+1. Open **[keyclash](https://OG-Saphal.github.io/keyclash)**
+2. Start typing right away as a guest, **or** sign up in a few seconds to save your progress
+3. Want to race someone? Head to **Multiplayer** and create or join a room
 
-### 1. Install dependencies
+That's it — no downloads, no setup.
 
-```bash
-npm install
-```
+<br>
 
-### 2. Start the dev server
+## ❓ FAQ
 
-```bash
-npm run dev
-```
+**Do I need an account to use KeyClash?**
+No. Solo typing tests work immediately as a guest. Your results are saved locally in your browser so you won't lose your history, but signing up lets you access them from any device and unlocks multiplayer and friends.
 
-Open [http://localhost:5173](http://localhost:5173) in your browser. The page hot-reloads on every save.
+**Do I need an account for multiplayer?**
+Yes — multiplayer rooms require you to be signed in, since you need an identity for other players to see and race against.
 
-### 3. Build for production
+**Is it free?**
+Yes, completely free, with no ads.
 
-```bash
-npm run build
-```
+**Can I play on mobile?**
+KeyClash works in any modern browser, though it's designed and best experienced with a physical keyboard.
 
-Output is in the `dist/` folder — ready to deploy to any static host (Vercel, Netlify, GitHub Pages, etc.).
+**How is my typing speed calculated?**
+WPM is based on correctly completed words divided by the time elapsed. Raw WPM includes every keystroke, mistakes included. Accuracy is your correct characters divided by your total characters typed.
 
-### 4. Preview the production build locally
+<br>
 
-```bash
-npm run preview
-```
+## 🛠 Want to Run It Yourself or Contribute?
 
----
+KeyClash is open source. If you're a developer interested in running the project locally, self-hosting it, or contributing code, check out [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a full technical breakdown of how the app is built.
 
-## 🎮 How to use
-
-| Action | Key |
-|--------|-----|
-| Start test | Just start typing |
-| Advance to next word | `Space` |
-| Delete a character | `Backspace` |
-| Go back to previous word | `Backspace` on empty input |
-| Restart | `Tab` (anywhere) |
-
----
-
-## 🏗 Architecture
-
-### State management — Zustand (`src/store/useTypingStore.ts`)
-
-All test state lives in a single Zustand store:
-
-- `phase` — `idle` → `running` → `finished`
-- `words` — array of `WordData` with per-character state
-- `currentWordIndex` + `currentInput` — current position in the test
-- `timeLeft` + `startTime` — timer state
-- `metrics` — live WPM / accuracy snapshot
-
-### Typing logic (`src/utils/typing.ts`)
-
-- `generateWords` — Fisher-Yates shuffle of the word pool, no repeats
-- `computeWordChars` — per-character diff between expected and typed
-- `finalizeWord` — marks a word correct/incorrect when space is pressed
-- `computeMetrics` — WPM = correct words / minutes; rawWpm = keystrokes / 5 / minutes
-
-### Input capture (`src/hooks/useKeyboardCapture.ts`)
-
-A visually hidden `<input>` receives focus on mount and on any page click. This gives native browser keyboard/IME support while rendering our own custom word display.
-
-### Timer (`src/hooks/useTimer.ts`)
-
-A `setInterval` fires every 1 s while `phase === 'running'`, calling `tick()` in the store, which decrements `timeLeft` and calls `finishTest()` at zero.
-
----
-
-## 🎨 Design tokens
-
-| Token | Value | Use |
-|-------|-------|-----|
-| `bg-primary` | `#0f1117` | Page background |
-| `bg-secondary` | `#191c26` | Cards / panels |
-| `accent-primary` | `#e2b714` | Timer (urgent), active pill, caret |
-| `word-correct` | `#9ca3af` | Correctly typed characters |
-| `word-incorrect` | `#ef4444` | Incorrectly typed characters |
-| `word-pending` | `#4b5563` | Not yet typed |
-| Font | JetBrains Mono | All typing / metric text |
-
----
+<br>
 
 ## 📄 License
 
-MIT — do whatever you like with it.
+MIT — free to use, modify, and share.
+
