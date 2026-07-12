@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // ← added useNavigate
 import { Eye, EyeOff, Check, X, Loader } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useUsernameChecker } from '../hooks/useUsernameChecker';
@@ -7,6 +7,7 @@ import AuthLayout from '../components/layout/AuthLayout';
 import { Input, Button, Alert, PasswordStrength, getPasswordStrength } from '../components/ui/FormElements';
 
 const SignUpPage: React.FC = () => {
+  const navigate = useNavigate(); // ← added
   const signUp = useAuthStore(s => s.signUp);
 
   const [email, setEmail] = useState('');
@@ -22,6 +23,15 @@ const SignUpPage: React.FC = () => {
 
   const emailRef = useRef<HTMLInputElement>(null);
   useEffect(() => { emailRef.current?.focus(); }, []);
+
+  // Listen for Escape key to go home
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') navigate('/');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   const usernameStatus = useUsernameChecker(username);
 
@@ -68,10 +78,25 @@ const SignUpPage: React.FC = () => {
     }
   };
 
+  // Close button component to avoid duplication
+  const CloseButton = () => (
+    <button
+      type="button"
+      onClick={() => navigate('/')}
+      className="absolute -top-14 right-0 flex cursor-pointer hover:text-red-500 items-center gap-1 px-3 py-1.5 text-sm rounded-full border border-border-light bg-background-secondary text-text-muted hover:text-text-primary hover:border-accent-primary hover:bg-background-hover transition-all duration-200 z-10"
+      aria-label="Close and go to home (Esc)"
+    >
+      <X size={16} strokeWidth={2} />
+      <span className="font-mono text-xs font-medium">Esc</span>
+    </button>
+  );
+
+  // --- Success state ---
   if (success) {
     return (
       <AuthLayout title="Check your email">
-        <div className="flex flex-col gap-6 text-center">
+        <div className="relative flex flex-col gap-6 text-center">
+          <CloseButton />
           <div className="text-5xl">📬</div>
           <p className="text-text-muted text-sm">
             We sent a verification link to <span className="text-text-primary font-mono">{email}</span>.
@@ -89,6 +114,7 @@ const SignUpPage: React.FC = () => {
     );
   }
 
+  // --- Form state ---
   return (
     <AuthLayout
       title="Create account"
@@ -101,7 +127,9 @@ const SignUpPage: React.FC = () => {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="relative flex flex-col gap-4">
+        <CloseButton />
+
         {error && <Alert type="error">{error}</Alert>}
 
         <Input

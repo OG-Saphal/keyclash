@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, X } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import AuthLayout from '../components/layout/AuthLayout';
 import { Input, Button, Alert } from '../components/ui/FormElements';
@@ -19,6 +19,15 @@ const LoginPage: React.FC = () => {
 
   const emailRef = useRef<HTMLInputElement>(null);
   useEffect(() => { emailRef.current?.focus(); }, []);
+
+  // Listen for Escape key globally
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') navigate('/');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +59,19 @@ const LoginPage: React.FC = () => {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Form container is relative, button is absolute at top-right */}
+      <form onSubmit={handleSubmit} className="relative flex flex-col gap-4">
+        {/* Close button positioned at the card's top-right corner */}
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="absolute -top-14 cursor-pointer hover:text-red-500 right-0 flex items-center gap-1 px-3 py-1.5 text-sm rounded-full border border-border-light bg-background-secondary text-text-muted hover:text-text-primary hover:border-accent-primary hover:bg-background-hover transition-all duration-200 z-10"
+          aria-label="Close and go to home (Esc)"
+        >
+          <X size={16} strokeWidth={2} />
+          <span className="font-mono text-xs font-medium">Esc</span>
+        </button>
+
         {error && <Alert type="error">{error}</Alert>}
 
         <Input
