@@ -7,6 +7,7 @@ export interface FriendRequestRow {
     status: FriendRequestStatus;
     created_at: string;
     responded_at: string | null;
+    online?: boolean;
 }
 
 export interface FriendRequest {
@@ -25,6 +26,7 @@ export interface FriendProfileSummary {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    online?: boolean;
 }
 
 export type FriendshipStatus =

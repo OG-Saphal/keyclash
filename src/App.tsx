@@ -160,6 +160,18 @@ const App: React.FC = () => {
     initializeAuth();
   }, [initializeAuth]);
 
+  const user = useAuthStore((s) => s.user);
+  const connect = useMultiplayerStore((s) => s.connect);
+  const disconnect = useMultiplayerStore((s) => s.disconnect);
+
+  useEffect(() => {
+    if (user) {
+      connect(); // establishes socket & registers presence listeners
+    } else {
+      disconnect(); // cleans up when logged out
+    }
+  }, [user, connect, disconnect]);
+
   // 👇 Enable voice debug logging (store subscription)
   useVoiceDebug();
 

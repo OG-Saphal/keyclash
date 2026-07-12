@@ -114,7 +114,7 @@ const MultiplayerResultsPage: React.FC = () => {
   );
 
   return (
-    <div className="relative min-h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
+    <div className="relative max-h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
       {/* 🆕 same ambient mesh treatment as RacePage, for visual continuity
           across the race -> results transition. */}
       <div className="pointer-events-none absolute inset-0 bg-mesh-race animate-meshDrift" />
@@ -237,11 +237,10 @@ const MultiplayerResultsPage: React.FC = () => {
             ) : (
               <div className="flex items-center gap-3 flex-wrap">
                 <button
-                  className={`px-5 py-2.5 rounded-xl font-semibold transition-colors ${
-                    myVote
-                      ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
-                      : 'bg-accent-primary text-bg-primary shadow-glow hover:bg-accent-hover'
-                  }`}
+                  className={`px-5 py-2.5 rounded-xl font-semibold transition-colors ${myVote
+                    ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/40'
+                    : 'bg-accent-primary text-bg-primary shadow-glow hover:bg-accent-hover'
+                    }`}
                   onClick={() => voteReturnToLobby(!myVote)}
                 >
                   {myVote ? 'Waiting for others…' : 'Return to Lobby'}

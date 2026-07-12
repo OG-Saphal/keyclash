@@ -1,16 +1,14 @@
 import React from 'react';
 import type { UserProfile } from '../../types/auth';
 
+type MinimalUser = Pick<UserProfile, 'displayName' | 'username' | 'avatarUrl'>;
+
 interface AvatarProps {
-  user: UserProfile;
+  user: MinimalUser;
   size?: number;
   className?: string;
 }
 
-/**
- * Renders the user's avatar image if present, otherwise a circle
- * with their initials in the accent colour.
- */
 const UserAvatar: React.FC<AvatarProps> = ({ user, size = 32, className = '' }) => {
   const initials = (user.displayName || user.username || '?')
     .split(' ')

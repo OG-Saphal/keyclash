@@ -479,18 +479,34 @@ const FriendsSidebar: React.FC = () => {
                         View Profile
                     </button>
 
-                    {/* Invite button - only enabled when in a room */}
-                    <button
-                        className={`w-full px-4 py-2  text-xs flex items-center gap-2 transition-colors ${currentRoom
-                            ? 'text-text-primary cursor-pointer hover:bg-bg-tertiary/30'
-                            : 'text-text-muted cursor-not-allowed'
-                            }`}
-                        onClick={() => currentRoom && handleInvite(contextMenu.friendId)}
-                        disabled={!currentRoom}
-                    >
-                        <UserPlus size={14} />
-                        {currentRoom ? 'Invite to Room' : 'Not in a room'}
-                    </button>
+                    {/* Invite button – now checks both room and online status */}
+                    {(() => {
+                        const isFriendOnline = onlineUsers.has(contextMenu.friendId);
+                        const canInvite = currentRoom && isFriendOnline;
+                        let label = 'Invite to Room';
+                        let disabled = true;
+                        if (!isFriendOnline) {
+                            label = 'Offline';
+                        } else if (!currentRoom) {
+                            label = 'Room unavailable';
+                        } else {
+                            label = 'Invite to Room';
+                            disabled = false;
+                        }
+                        return (
+                            <button
+                                className={`w-full px-4 py-2 text-xs flex items-center gap-2 transition-colors ${disabled
+                                    ? 'text-text-muted cursor-not-allowed'
+                                    : 'text-text-primary cursor-pointer hover:bg-bg-tertiary/30'
+                                    }`}
+                                onClick={canInvite ? () => handleInvite(contextMenu.friendId) : undefined}
+                                disabled={disabled}
+                            >
+                                <UserPlus size={14} />
+                                {label}
+                            </button>
+                        );
+                    })()}
 
                     <button
                         className="w-full px-4 py-2 text-xs cursor-pointer text-text-primary hover:bg-bg-tertiary/30 flex items-center gap-2 transition-colors"

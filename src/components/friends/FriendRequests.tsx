@@ -32,7 +32,7 @@ const FriendRequests: React.FC = () => {
                     <ul className="flex flex-col gap-1">
                         {incoming.map(r => (
                             <li key={r.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-tertiary/30">
-                                <UserAvatar user={{ displayName: r.otherUser.displayName, username: r.otherUser.username, avatarUrl: r.otherUser.avatarUrl } as any} size={32} />
+                                <UserAvatar user={r.otherUser} size={32} />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm text-text-primary truncate">{r.otherUser.displayName}</p>
                                     <p className="text-xs text-text-muted truncate">@{r.otherUser.username}</p>
@@ -73,7 +73,7 @@ const FriendRequests: React.FC = () => {
                     <ul className="flex flex-col gap-1">
                         {outgoing.map(r => (
                             <li key={r.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-tertiary/30">
-                                <UserAvatar user={{ displayName: r.otherUser.displayName, username: r.otherUser.username, avatarUrl: r.otherUser.avatarUrl } as any} size={32} />
+                                <UserAvatar user={r.otherUser} size={32} />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm text-text-primary truncate">{r.otherUser.displayName}</p>
                                     <p className="text-xs text-text-muted truncate">@{r.otherUser.username}</p>
@@ -94,4 +94,4 @@ const FriendRequests: React.FC = () => {
     );
 };
 
-export default FriendRequests;
+export default FriendRequests; 
