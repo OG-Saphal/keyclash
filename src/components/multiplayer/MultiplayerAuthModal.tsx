@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Lock, LogIn, UserPlus } from 'lucide-react';
@@ -10,6 +10,34 @@ interface Props {
 
 const MultiplayerAuthModal: React.FC<Props> = ({ open, onClose }) => {
   const navigate = useNavigate();
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow Escape to close
+      if (e.key === 'Escape') {
+        onClose();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      // If the event target is inside the modal, let it handle normally (for buttons, etc.)
+      const modalElement = document.querySelector('.multiplayer-auth-modal-container');
+      if (modalElement && modalElement.contains(e.target as Node)) {
+        return; // allow default behavior (e.g., Enter to click button)
+      }
+
+      // Otherwise, block the key from reaching the typing test
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true); // capture phase
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [open, onClose]);
 
   return (
     <AnimatePresence>

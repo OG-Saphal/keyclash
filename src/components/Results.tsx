@@ -68,7 +68,10 @@ const WpmGraph: React.FC<{ data: { time: number; wpm: number; raw: number }[] }>
       aria-hidden="true"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 4, right: 8, bottom: 0, left: 0 }}  // ← changed from -20 to 0
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--bg-tertiary))" vertical={false} />
           <XAxis
             dataKey="time"
@@ -83,7 +86,18 @@ const WpmGraph: React.FC<{ data: { time: number; wpm: number; raw: number }[] }>
             tick={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}
             axisLine={false}
             tickLine={false}
-            width={32}
+            width={40}   // ← more space for labels
+            label={{
+              value: 'Words Per Minute',
+              angle: -90,
+              position: 'insideLeft',
+              style: {
+                textAnchor: 'middle',
+                fill: 'rgb(var(--text-muted))',
+                fontSize: 10,
+                fontFamily: 'JetBrains Mono, monospace',
+              },
+            }}
           />
           <Tooltip content={<ChartTooltip />} />
           <Line type="monotone" dataKey="raw" name="raw" stroke="rgb(var(--text-muted))" strokeWidth={1.5} dot={false} isAnimationActive={false} />
