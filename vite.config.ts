@@ -4,4 +4,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/keyclash/',
+  server: {
+    watch: {
+      ignored: ['**/.vs/**', '**/node_modules/**']
+    }
+  }
 })
