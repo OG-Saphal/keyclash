@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { fetchResultsForDay } from '../../services/results.service';
 import type { ActivityDay, StoredResult } from '../../types/auth';
@@ -26,6 +26,7 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [dayResults, setDayResults] = useState<StoredResult[]>([]);
   const [loadingDay, setLoadingDay] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const countByDay = useMemo(() => {
     const m = new Map<string, number>();
@@ -100,9 +101,17 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
     return labels;
   }, [weeks]);
 
+  // Default scroll position: rightmost column (most recent days), matching
+  // GitHub's contribution calendar behavior.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = el.scrollWidth;
+  }, [weeks]);
+
   return (
     <div className="relative">
-      <div className="overflow-x-auto pb-1">
+      <div ref={scrollRef} className="overflow-x-auto pb-1">
         <div className="inline-flex flex-col gap-1 min-w-full">
           {/* Month labels */}
           <div className="flex gap-[3px] pl-6 text-[10px] text-text-muted font-mono">

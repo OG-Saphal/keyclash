@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Users } from 'lucide-react';
+import { User, Users, LucideProps } from 'lucide-react';
 
 export type StatsMode = 'single' | 'multiplayer';
 
@@ -10,7 +10,10 @@ interface StatsModeToggleProps {
     multiplayerDisabledReason?: string | null;
 }
 
-const OPTIONS: { key: StatsMode; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+// Use a more flexible type that matches Lucide icons
+type IconType = React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>>;
+
+const OPTIONS: { key: StatsMode; label: string; icon: IconType }[] = [
     { key: 'single', label: 'Single player', icon: User },
     { key: 'multiplayer', label: 'Multiplayer', icon: Users },
 ];
