@@ -12,6 +12,8 @@ export interface UserProfile {
   totalTimeTyped: number;
   avgwpm: number;
   preferences: UserPreferences;
+  /** 🆕 Bio/about-me text, max 200 chars, nullable. Edited from AccountPage. */
+  bio: string | null;
 }
 
 export interface UserPreferences {
@@ -41,7 +43,8 @@ export interface AuthState {
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
-  updateProfile: (data: Partial<Pick<UserProfile, 'displayName' | 'username' | 'avatarUrl'>>) => Promise<void>;
+  // 🆕 'bio' added to the updatable field set
+  updateProfile: (data: Partial<Pick<UserProfile, 'displayName' | 'username' | 'avatarUrl' | 'bio'>>) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateEmail: (newEmail: string) => Promise<void>;
   uploadAvatar: (file: File) => Promise<string>;

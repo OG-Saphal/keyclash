@@ -29,6 +29,8 @@ export function rowToProfile(
     totalTests: (row.total_tests as number) ?? 0,
     totalTimeTyped: (row.total_time_typed as number) ?? 0,
     avgwpm: (row.avg_wpm as number) ?? 0,
+    // 🆕 Feature 5 — bio/about-me (nullable text column added in migration)
+    bio: (row.bio as string | null) ?? null,
     preferences: {
       defaultMode: (prefs.defaultMode as 'time' | 'words') ?? 'time',
       defaultDuration: (prefs.defaultDuration as 15 | 30 | 60 | 120) ?? 30,

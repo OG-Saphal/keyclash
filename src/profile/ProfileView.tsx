@@ -1,17 +1,23 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Trash2, CheckCircle } from 'lucide-react';
+import { Camera, Trash2, CheckCircle, Flame } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import UserAvatar from '../components/auth/UserAvatar';
 import { Button } from '../components/ui/FormElements';
+import TimeFilterTabs from '../components/profile/TimeFilterTabs';
+import ActivityHeatmap from '../components/profile/ActivityHeatmap';
+import ShareProfileButton from '../components/profile/ShareProfileButton';
+import MultiplayerStatsSection from '../components/profile/MultiplayerStatsSection';
+import { fetchHistory, fetchUserStats, fetchStreak, fetchActivityHeatmap } from '../services/results.service';
+import { fetchMultiplayerStats, fetchRecentMultiplayerResults } from '../services/multiplayerStats.service';
+import { TIME_RANGE_OPTIONS, type TimeRangeKey, type StreakStats, type ActivityDay } from '../types/auth';
 import type { UserProfile } from '../types/auth';
 import type { StoredResult } from '../types/auth';
+import type { MultiplayerStatsSummary, MultiplayerRecentResult } from '../types/multiplayerStats';
 
 interface ProfileViewProps {
     user: UserProfile;
-    recentResults: StoredResult[];
     isOwnProfile: boolean;
-    avgWpm: number | null;
     friendsSince?: string | null;
 }
 
@@ -23,9 +29,7 @@ const formatTime = (seconds: number) => {
 
 const ProfileView: React.FC<ProfileViewProps> = ({
     user,
-    recentResults,
     isOwnProfile,
-    avgWpm,
     friendsSince,
 }) => {
     const uploadAvatar = useAuthStore(s => s.uploadAvatar);

@@ -8,10 +8,19 @@ const AVATAR_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET ?? 'avatars';
 
 export async function updateProfile(
   userId: string,
-  fields: { display_name?: string; username?: string; avatar_url?: string | null },
+  // 🆕 Feature 5 — 'bio' added alongside the existing editable fields.
+  fields: { display_name?: string; username?: string; avatar_url?: string | null; bio?: string | null },
 ): Promise<UserProfile> {
+  // 🆕 Defensive 200-char clamp mirroring the DB CHECK constraint (see
+  // migration SQL) — the AccountPage textarea already enforces this, but
+  // clamping here too means any other future caller can't bypass it.
+  const safeFields = {
+    ...fields,
+    ...(fields.bio !== undefined ? { bio: fields.bio ? fields.bio.slice(0, 200) : null } : {}),
+  };
+
   const { data, error } = await (supabase.from('profiles') as any)
-    .update({ ...fields, updated_at: new Date().toISOString() })
+    .update({ ...safeFields, updated_at: new Date().toISOString() })
     .eq('id', userId)
     .select('*')
     .single();

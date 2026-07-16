@@ -6,6 +6,8 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useUsernameChecker } from '../hooks/useUsernameChecker';
 import { Input, Button, Alert, PasswordStrength } from '../components/ui/FormElements';
 
+const BIO_MAX = 200;
+
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -34,6 +36,11 @@ const AccountPage: React.FC = () => {
   const usernameStatus = useUsernameChecker(
     username !== user?.username ? username : '' // only check if changed
   );
+
+  // 🆕 Feature 5 — bio / about me
+  const [bio, setBio] = useState(user?.bio ?? '');
+  const [bioLoading, setBioLoading] = useState(false);
+  const [bioMsg, setBioMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // ── Change password ─────────────────────────────────────────────────────────
   const [currentPw, setCurrentPw] = useState('');
@@ -83,6 +90,21 @@ const AccountPage: React.FC = () => {
       setProfileMsg({ type: 'error', text: (err as Error).message });
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  // 🆕 Feature 5 — save bio
+  const handleBioSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBioLoading(true);
+    setBioMsg(null);
+    try {
+      await updateProfile({ bio: bio.trim() ? bio.trim() : null });
+      setBioMsg({ type: 'success', text: 'Bio updated.' });
+    } catch (err) {
+      setBioMsg({ type: 'error', text: (err as Error).message });
+    } finally {
+      setBioLoading(false);
     }
   };
 
@@ -190,6 +212,31 @@ const AccountPage: React.FC = () => {
             <Button type="submit" loading={profileLoading} className="self-start">
               Save changes
             </Button>
+          </form>
+        </Section>
+
+        {/* 🆕 ── Bio / About me (Feature 5) ── */}
+        <Section title="About me">
+          <form onSubmit={handleBioSave} className="flex flex-col gap-2">
+            {bioMsg && <Alert type={bioMsg.type}>{bioMsg.text}</Alert>}
+            <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
+              Bio
+            </label>
+            <textarea
+              value={bio}
+              onChange={e => setBio(e.target.value.slice(0, BIO_MAX))}
+              rows={3}
+              placeholder="Tell people a bit about yourself…"
+              className="w-full bg-bg-secondary border border-bg-tertiary rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-muted font-mono text-sm focus:outline-none focus:border-accent-primary transition-colors resize-none"
+            />
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-mono ${bio.length >= BIO_MAX ? 'text-red-400' : 'text-text-muted'}`}>
+                {bio.length}/{BIO_MAX}
+              </span>
+              <Button type="submit" loading={bioLoading} className="self-end">
+                Save bio
+              </Button>
+            </div>
           </form>
         </Section>
 

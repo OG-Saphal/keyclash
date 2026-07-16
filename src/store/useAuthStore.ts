@@ -149,6 +149,8 @@ export const useAuthStore = create<AuthState>()(
         if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
         if (fields.username !== undefined) dbFields.username = fields.username;
         if (fields.avatarUrl !== undefined) dbFields.avatar_url = fields.avatarUrl;
+        // 🆕 Feature 5 — bio
+        if (fields.bio !== undefined) dbFields.bio = fields.bio;
 
         try {
           const updated = await updateProfile(user.id, dbFields as Parameters<typeof updateProfile>[1]);
