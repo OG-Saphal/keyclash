@@ -206,19 +206,29 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 <CheckCircle size={16} className="text-green-400 shrink-0" />
                             </span>
                         )}
+                        {/* 🆕 Feature 2 — streak, next to the name so it reads as a badge */}
+                        {streak && streak.currentStreak > 0 && (
+                            <span
+                                title={`Best streak: ${streak.bestStreak} days`}
+                                className="flex items-center gap-1 text-xs font-mono text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded-full shrink-0"
+                            >
+                                🔥 {streak.currentStreak}
+                            </span>
+                        )}
                     </div>
                     <p className="text-text-muted text-sm">@{user.username}</p>
                     {isOwnProfile && <p className="text-text-muted text-xs mt-0.5 truncate">{user.email}</p>}
                 </div>
 
-                {/* Right side: Friends since (if not own profile) + Edit profile button */}
-                <div className="flex items-center gap-4 ml-auto shrink-0">
+                {/* Right side: Friends since (if not own profile) + Edit profile / Share button */}
+                <div className="flex items-center gap-3 ml-auto shrink-0">
                     {!isOwnProfile && friendsSince && (
                         <div className="text-right text-text-muted">
                             <p className="text-[10px] font-mono uppercase tracking-wider">Friends since</p>
                             <p className="font-mono text-sm font-medium text-text-primary">{friendsSince}</p>
                         </div>
                     )}
+                    {isOwnProfile && <ShareProfileButton username={user.username} />}
                     {isOwnProfile && (
                         <Link to="/account">
                             <Button variant="ghost" className="shrink-0">Edit profile</Button>
