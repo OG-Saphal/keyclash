@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import UserAvatar from '../components/auth/UserAvatar';
 import { Button } from '../components/ui/FormElements';
 import TimeFilterTabs from '../components/profile/TimeFilterTabs';
+import StatsModeToggle, { type StatsMode } from '../components/profile/StatsModeToggle';
 import ActivityHeatmap from '../components/profile/ActivityHeatmap';
 import ShareProfileButton from '../components/profile/ShareProfileButton';
 import MultiplayerStatsSection from '../components/profile/MultiplayerStatsSection';
@@ -58,6 +59,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     const [mpRecent, setMpRecent] = useState<MultiplayerRecentResult[]>([]);
     const [mpLoading, setMpLoading] = useState(true);
 
+    // 🆕 Feature 8 — single-player / multiplayer stats switch. Both data sets
+    // are already fetched (see effects below) so flipping this is instant —
+    // it only decides which one occupies the Stats slot.
+    const [statsMode, setStatsMode] = useState<StatsMode>('single');
+
+    // Safeguard: if multiplayer data finishes loading and there's none (e.g.
+    // this user has never raced, or the toggle carried over while navigating
+    // between profiles), fall back to single-player rather than showing an
+    // empty Stats block.
+    useEffect(() => {
+        if (!mpLoading && !mpSummary && statsMode === 'multiplayer') {
+            setStatsMode('single');
+        }
+    }, [mpLoading, mpSummary, statsMode]);
+
     // ── Time-filtered stats + history (Feature 1) ──────────────────────────────
     const loadFilteredData = useCallback(async (range: TimeRangeKey) => {
         setStatsLoading(true);
@@ -108,6 +124,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     }, [user.id]);
 
     // ── Multiplayer stats (Feature 4) ───────────────────────────────────────
+    // Fetched unconditionally (not lazily on toggle) so switching statsMode
+    // is instant and doesn't show a loading flash every time.
     useEffect(() => {
         let cancelled = false;
         setMpLoading(true);
@@ -165,15 +183,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     {isOwnProfile && (
                         <div className="absolute -bottom-1 -right-1 flex gap-1">
                             <button
+                                type="button"
                                 onClick={() => fileRef.current?.click()}
                                 disabled={uploading}
-                                className="w-7 h-7 rounded-full bg-bg-primary border border-bg-tertiary flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
-                                title="Upload avatar"
+                                className="w-7 h-7 rounded-full bg-bg-primary border border-bg-tertiary flex items-center justify-center text-text-muted hover:text-accent-primary transition-colors"
+                                title="Change avatar"
                             >
                                 <Camera size={13} />
                             </button>
                             {user.avatarUrl && (
                                 <button
+                                    type="button"
                                     onClick={handleRemoveAvatar}
                                     disabled={removing}
                                     className="w-7 h-7 rounded-full bg-bg-primary border border-bg-tertiary flex items-center justify-center text-text-muted hover:text-red-400 transition-colors"
@@ -249,80 +269,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
             )}
 
-            {/* Stats grid + time filter */}
-            <div>
-                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider flex items-center gap-2">
-                        Stats
-                        {streak && (
-                            <span className="normal-case font-normal text-[11px] text-text-muted flex items-center gap-1">
-                                <Flame size={11} className="text-orange-400" /> best {streak.bestStreak}d
-                            </span>
-                        )}
-                    </h2>
-                    <TimeFilterTabs value={timeRange} onChange={setTimeRange} disabled={statsLoading} />
-                </div>
-                <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 transition-opacity ${statsLoading ? 'opacity-60' : ''}`}>
-                    {statCards.map(card => (
-                        <div key={card.label} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
-                            <p className="text-xs text-text-muted mb-1">{card.label}</p>
-                            <p className="font-mono font-bold text-text-primary text-lg">{card.value}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Recent tests (time-filtered) */}
-            <div>
-                <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
-                    Recent tests
-                </h2>
-                {recentResults.length === 0 ? (
-                    <p className="text-text-muted text-sm">
-                        {statsLoading ? 'Loading…' : 'No tests in this range.'}
-                    </p>
-                ) : (
-                    <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-bg-tertiary/40 text-text-muted text-xs uppercase tracking-wider">
-                                    <th className="px-4 py-2.5 text-left">Date</th>
-                                    <th className="px-4 py-2.5 text-right">WPM</th>
-                                    <th className="px-4 py-2.5 text-right">Raw</th>
-                                    <th className="px-4 py-2.5 text-right">Acc</th>
-                                    <th className="px-4 py-2.5 text-left">Mode</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {recentResults.map(r => (
-                                    <tr key={r.id} className="border-b border-bg-tertiary/20 last:border-0 hover:bg-bg-tertiary/10 transition-colors">
-                                        <td className="px-4 py-2.5 text-text-muted font-mono text-xs">
-                                            {new Date(r.created_at).toLocaleDateString()}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right text-accent-primary font-mono font-bold">
-                                            {Number(r.wpm).toFixed(0)}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right text-text-muted font-mono">
-                                            {Number(r.raw_wpm).toFixed(0)}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right text-text-muted font-mono">
-                                            {Number(r.accuracy).toFixed(1)}%
-                                        </td>
-                                        <td className="px-4 py-2.5 text-text-muted text-xs">
-                                            {r.mode === 'time' ? `${r.duration}s` : `${r.word_count}w`}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {/* 🆕 Feature 4 — multiplayer stats */}
-            <MultiplayerStatsSection summary={mpSummary} recent={mpRecent} loading={mpLoading} />
-
-            {/* 🆕 Feature 7 — activity heatmap */}
+            {/* 🆕 Feature 7 — activity heatmap (moved up: right after the identity
+                section, before performance stats, so it reads as part of "who this
+                person is" rather than being buried at the bottom of the page) */}
             <div>
                 <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
                     Activity
@@ -335,6 +284,97 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* 🆕 Feature 8 — Stats block with single-player / multiplayer switch.
+                Both modes render into this same slot so switching never causes a
+                page jump. The time-range filter only applies to single-player
+                data, so it's hidden in multiplayer mode. */}
+            <div>
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider flex items-center gap-2">
+                        Stats
+                        {streak && statsMode === 'single' && (
+                            <span className="normal-case font-normal text-[11px] text-text-muted flex items-center gap-1">
+                                <Flame size={11} className="text-orange-400" /> best {streak.bestStreak}d
+                            </span>
+                        )}
+                    </h2>
+                    <div className="flex items-center gap-3">
+                        {statsMode === 'single' && (
+                            <TimeFilterTabs value={timeRange} onChange={setTimeRange} disabled={statsLoading} />
+                        )}
+                        <StatsModeToggle
+                            value={statsMode}
+                            onChange={setStatsMode}
+                            multiplayerDisabledReason={!mpLoading && !mpSummary ? 'No multiplayer races yet' : null}
+                        />
+                    </div>
+                </div>
+
+                {statsMode === 'single' ? (
+                    <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 transition-opacity ${statsLoading ? 'opacity-60' : ''}`}>
+                        {statCards.map(card => (
+                            <div key={card.label} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
+                                <p className="text-xs text-text-muted mb-1">{card.label}</p>
+                                <p className="font-mono font-bold text-text-primary text-lg">{card.value}</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <MultiplayerStatsSection summary={mpSummary} recent={mpRecent} loading={mpLoading} hideHeading />
+                )}
+            </div>
+
+            {/* Recent tests (time-filtered, single-player only — multiplayer's
+                recent-results table is rendered inside MultiplayerStatsSection
+                above when that mode is active) */}
+            {statsMode === 'single' && (
+                <div>
+                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
+                        Recent tests
+                    </h2>
+                    {recentResults.length === 0 ? (
+                        <p className="text-text-muted text-sm">
+                            {statsLoading ? 'Loading…' : 'No tests in this range.'}
+                        </p>
+                    ) : (
+                        <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-bg-tertiary/40 text-text-muted text-xs uppercase tracking-wider">
+                                        <th className="px-4 py-2.5 text-left">Date</th>
+                                        <th className="px-4 py-2.5 text-right">WPM</th>
+                                        <th className="px-4 py-2.5 text-right">Raw</th>
+                                        <th className="px-4 py-2.5 text-right">Acc</th>
+                                        <th className="px-4 py-2.5 text-left">Mode</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {recentResults.map(r => (
+                                        <tr key={r.id} className="border-b border-bg-tertiary/20 last:border-0 hover:bg-bg-tertiary/10 transition-colors">
+                                            <td className="px-4 py-2.5 text-text-muted font-mono text-xs">
+                                                {new Date(r.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-accent-primary font-mono font-bold">
+                                                {Number(r.wpm).toFixed(0)}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-text-muted font-mono">
+                                                {Number(r.raw_wpm).toFixed(0)}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-text-muted font-mono">
+                                                {Number(r.accuracy).toFixed(1)}%
+                                            </td>
+                                            <td className="px-4 py-2.5 text-text-muted text-xs">
+                                                {r.mode === 'time' ? `${r.duration}s` : `${r.word_count}w`}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

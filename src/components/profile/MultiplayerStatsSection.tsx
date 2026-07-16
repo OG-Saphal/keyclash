@@ -12,6 +12,11 @@ interface MultiplayerStatsSectionProps {
   summary: MultiplayerStatsSummary | null;
   recent: MultiplayerRecentResult[];
   loading: boolean;
+  // 🆕 Feature 8 — when this section is rendered inside ProfileView's
+  // single/multiplayer toggle, the shared "Stats" heading above it already
+  // establishes context, so the component's own "Multiplayer" heading is
+  // redundant. Standalone usage (if any) keeps the heading by default.
+  hideHeading?: boolean;
 }
 
 const resultColor = (result: 'win' | 'loss' | 'draw') => {
@@ -27,13 +32,15 @@ const resultLabel = (r: MultiplayerRecentResult) => {
   return 'Draw';
 };
 
-const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summary, recent, loading }) => {
+const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summary, recent, loading, hideHeading }) => {
   if (loading) {
     return (
       <div>
-        <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Swords size={14} /> Multiplayer
-        </h2>
+        {!hideHeading && (
+          <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Swords size={14} /> Multiplayer
+          </h2>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[0, 1, 2, 3].map(i => (
             <div key={i} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 h-16 animate-pulse" />
@@ -54,9 +61,11 @@ const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summa
 
   return (
     <div>
-      <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
-        <Swords size={14} /> Multiplayer
-      </h2>
+      {!hideHeading && (
+        <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Swords size={14} /> Multiplayer
+        </h2>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         {cards.map(c => (
