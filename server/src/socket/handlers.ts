@@ -3,6 +3,7 @@ import * as rooms from '../rooms/roomManager.js';
 import { roomStore } from '../rooms/roomStore.js';
 import { quickMatchQueue, type QueueEntry } from '../quickmatch/queue.js';
 import { recomputeFinalStats, type FinalSubmission } from '../game/metrics.js';
+import { saveRaceResults } from '../db/raceResults.js'; // 🆕 Feature 4
 import type { RoomState } from '../rooms/types.js';
 import type { ColorId } from '../rooms/playerColors.js';
 import { notifyVoicePeerLeft } from '../voice/voiceHandlers.js';
@@ -272,6 +273,13 @@ export function registerRoomHandlers(io: Server, socket: AuthedSocket) {
 
       if (rooms.finishRace(room)) {
         io.to(`room:${room.id}`).emit('race:results', rooms.toDTO(room));
+        // 🆕 Feature 4 — persist the finished race + every participant's
+        // server-recomputed stats now that the room is authoritatively
+        // 'finished'. Fired AFTER the broadcast above so a slow Supabase
+        // write never delays players seeing their results, and never
+        // awaited here — saveRaceResults() logs its own errors internally
+        // and never throws, so a failure here can't crash this handler.
+        void saveRaceResults(room);
       }
     } catch (e) {
       err(socket, 'race:finish', e);
