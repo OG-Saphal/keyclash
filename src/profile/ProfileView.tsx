@@ -318,6 +318,23 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* 🆕 Feature 4 — multiplayer stats */}
+            <MultiplayerStatsSection summary={mpSummary} recent={mpRecent} loading={mpLoading} />
+
+            {/* 🆕 Feature 7 — activity heatmap */}
+            <div>
+                <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
+                    Activity
+                </h2>
+                {heatmapLoading ? (
+                    <div className="h-[100px] bg-bg-secondary/50 rounded-xl animate-pulse" />
+                ) : (
+                    <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
+                        <ActivityHeatmap userId={user.id} data={heatmapData} days={365} />
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
