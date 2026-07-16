@@ -4,12 +4,22 @@ import { ArrowLeft, UserPlus, Check, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFriendsStore } from '../store/useFriendsStore';
-import { fetchHistory } from '../services/results.service';
 import ProfileView from '../profile/ProfileView';
 import type { UserProfile } from '../types/auth';
-import type { StoredResult } from '../types/auth';
 import type { FriendshipStatus } from '../types/friends';
 
+// 🆕 Per product decision: this route (/u/:username) is now a fully public
+// profile page — the previous "sign in to view profiles" gate is removed
+// entirely, since it's also the destination of the new Share Profile link
+// (Feature 3), which has to work for signed-out visitors too. Friend-request
+// UI (Add friend / pending / friends badge) still only renders for a
+// SIGNED-IN viewer — an anonymous visitor just sees the public stats.
+//
+// 🆕 recentResults/avgWpm fetching moved into ProfileView itself (it now
+// takes just `user` + `isOwnProfile` + `friendsSince` and fetches everything
+// else — time-filtered stats, streak, heatmap, multiplayer stats — using
+// user.id). That removes the duplicate fetchHistory() call this page used
+// to make purely to compute an avgWpm fallback.
 const FriendProfilePage: React.FC = () => {
     const { username } = useParams<{ username: string }>();
     const myUser = useAuthStore(s => s.user);
@@ -19,21 +29,21 @@ const FriendProfilePage: React.FC = () => {
     const navigate = useNavigate();
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [results, setResults] = useState<StoredResult[]>([]);
     const [friendship, setFriendship] = useState<FriendshipStatus>('none');
     const [friendsSince, setFriendsSince] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
 
     useEffect(() => {
-        if (!username || !myUser) return;
+        if (!username) return;
         let cancelled = false;
 
         (async () => {
             setLoading(true);
 
             try {
-                // 1) Fetch the target profile by username
+                // 1) Fetch the target profile by username — public, works
+                // whether or not anyone is signed in.
                 const { data: profileData, error: profileError } = await supabase
                     .from('profiles')
                     .select('*')
@@ -48,48 +58,27 @@ const FriendProfilePage: React.FC = () => {
                 }
 
                 const targetUserId = profileData.id;
+                let friendsSinceLocal: string | null = null;
 
-                // 2) Check friendship status
-                const { status, requestId } = await getFriendshipStatus(myUser.id, targetUserId);
-                if (cancelled) return;
-                setFriendship(status);
+                // 2) Friendship status only matters (and is only computable)
+                // when someone is actually signed in.
+                if (myUser) {
+                    const { status, requestId } = await getFriendshipStatus(myUser.id, targetUserId);
+                    if (cancelled) return;
+                    setFriendship(status);
 
-                let avgWpm = 0;
-                let friendsSince: string | null = null;
-                let results: StoredResult[] = [];
-
-                // 3) If friends, fetch "friends since" and recent results
-                if (status === 'friends' && requestId) {
-                    const [sinceData, histData] = await Promise.all([
-                        supabase
+                    if (status === 'friends' && requestId) {
+                        const { data: sinceData } = await supabase
                             .from('friend_requests')
                             .select('responded_at')
                             .eq('id', requestId)
-                            .single(),
-                        fetchHistory(targetUserId, 1, 10),
-                    ]);
-
-                    if (!cancelled) {
-                        if (sinceData.data?.responded_at) {
-                            friendsSince = new Date(sinceData.data.responded_at).toLocaleDateString();
-                        }
-                        if (histData.results) {
-                            results = histData.results;
-                            // Compute average WPM from the user's recent results
-                            const validResults = results.filter(r => r.wpm && r.wpm > 0);
-                            if (validResults.length > 0) {
-                                const sum = validResults.reduce((acc, r) => acc + r.wpm, 0);
-                                avgWpm = sum / validResults.length;
-                            }
+                            .single();
+                        if (!cancelled && sinceData?.responded_at) {
+                            friendsSinceLocal = new Date(sinceData.responded_at).toLocaleDateString();
                         }
                     }
-                }
-
-                // Fallback: if we don't have a computed average, use profile stats
-                if (avgWpm === 0 && profileData) {
-                    avgWpm = profileData.total_time_typed > 0
-                        ? (profileData.total_keystrokes / 5) / (profileData.total_time_typed / 60)
-                        : 0;
+                } else {
+                    setFriendship('none');
                 }
 
                 if (!cancelled) {
@@ -103,6 +92,7 @@ const FriendProfilePage: React.FC = () => {
                         createdAt: profileData.created_at,
                         totalTests: profileData.total_tests ?? 0,
                         totalTimeTyped: profileData.total_time_typed ?? 0,
+                        bio: profileData.bio ?? null,
                         preferences: profileData.preferences ?? {
                             theme: 'dark',
                             defaultMode: 'time',
@@ -110,12 +100,11 @@ const FriendProfilePage: React.FC = () => {
                             defaultDuration: 15,
                             defaultWordCount: 25,
                         },
-                        avgwpm: avgWpm,
+                        avgwpm: 0, // ProfileView computes its own time-filtered avg internally
                     };
 
                     setProfile(fullProfile);
-                    setResults(results);
-                    setFriendsSince(friendsSince);
+                    setFriendsSince(friendsSinceLocal);
                     setLoading(false);
                 }
             } catch (err) {
@@ -129,16 +118,6 @@ const FriendProfilePage: React.FC = () => {
         return () => { cancelled = true; };
     }, [username, myUser, getFriendshipStatus]);
 
-    if (!myUser) {
-        return (
-            <div className="min-h-screen bg-bg-primary flex items-center justify-center">
-                <p className="text-text-muted">
-                    <Link to="/login" className="text-accent-primary hover:underline">Sign in</Link> to view profiles.
-                </p>
-            </div>
-        );
-    }
-
     if (loading) {
         return <div className="min-h-screen bg-bg-primary" />;
     }
@@ -151,13 +130,16 @@ const FriendProfilePage: React.FC = () => {
         );
     }
 
+    const isOwnProfile = myUser?.id === profile.id;
+
     const handleAdd = async () => {
+        if (!myUser) return;
         await sendRequest(myUser.id, profile.id);
         setFriendship('pending_sent');
     };
 
     const handleBackToFriends = () => {
-        toggleSidebar();
+        if (myUser) toggleSidebar();
         navigate(-1);
     };
 
@@ -175,10 +157,12 @@ const FriendProfilePage: React.FC = () => {
                     onClick={handleBackToFriends}
                     className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors"
                 >
-                    <ArrowLeft size={14} /> Back to friends
+                    <ArrowLeft size={14} /> Back
                 </button>
 
-                {friendship !== 'friends' && (
+                {/* Friend-request UI only makes sense for a signed-in viewer
+                    looking at someone ELSE's profile. */}
+                {myUser && !isOwnProfile && friendship !== 'friends' && (
                     <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 flex items-center justify-between">
                         <p className="text-sm text-text-muted">
                             {friendship === 'pending_sent' && 'Friend request sent.'}
@@ -199,18 +183,21 @@ const FriendProfilePage: React.FC = () => {
                     </div>
                 )}
 
-                {friendship === 'friends' && (
+                {myUser && !isOwnProfile && friendship === 'friends' && (
                     <div className="flex items-center gap-1.5 text-xs text-green-400 font-mono">
                         <Check size={12} /> Friends
                     </div>
                 )}
 
-                {/*  Pass friendsSince to ProfileView */}
+                {!myUser && (
+                    <p className="text-xs text-text-muted">
+                        <Link to="/login" className="text-accent-primary hover:underline">Sign in</Link> to add friends and see more.
+                    </p>
+                )}
+
                 <ProfileView
                     user={profile}
-                    recentResults={results}
-                    isOwnProfile={false}
-                    avgWpm={profile.avgwpm}
+                    isOwnProfile={isOwnProfile}
                     friendsSince={friendsSince}
                 />
             </main>
