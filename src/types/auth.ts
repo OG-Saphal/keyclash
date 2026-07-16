@@ -86,3 +86,49 @@ export interface HistoryFilters {
   dateFrom?: string;
   dateTo?: string;
 }
+
+// ─── 🆕 Time-range filter (Feature 1) ──────────────────────────────────────────
+
+export type TimeRangeKey = '7d' | '15d' | '1m' | '3m' | '6m' | 'all';
+
+export interface TimeRangeOption {
+  key: TimeRangeKey;
+  label: string;
+  /** Returns an ISO date string to use as HistoryFilters.dateFrom, or null for "all time". */
+  toDateFrom: () => string | null;
+}
+
+export const TIME_RANGE_OPTIONS: TimeRangeOption[] = [
+  { key: '7d', label: '7 days', toDateFrom: () => daysAgoIso(7) },
+  { key: '15d', label: '15 days', toDateFrom: () => daysAgoIso(15) },
+  { key: '1m', label: '1 month', toDateFrom: () => monthsAgoIso(1) },
+  { key: '3m', label: '3 months', toDateFrom: () => monthsAgoIso(3) },
+  { key: '6m', label: '6 months', toDateFrom: () => monthsAgoIso(6) },
+  { key: 'all', label: 'All time', toDateFrom: () => null },
+];
+
+function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+function monthsAgoIso(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return d.toISOString();
+}
+
+// ─── 🆕 Streak (Feature 2) ─────────────────────────────────────────────────────
+
+export interface StreakStats {
+  currentStreak: number;
+  bestStreak: number;
+}
+
+// ─── 🆕 Activity heatmap (Feature 7) ───────────────────────────────────────────
+
+export interface ActivityDay {
+  day: string; // 'YYYY-MM-DD'
+  count: number;
+}

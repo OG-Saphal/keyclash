@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { StoredResult, HistoryFilters } from '../types/auth';
+import type { StoredResult, HistoryFilters, StreakStats, ActivityDay } from '../types/auth';
 import type { TestResult } from '../types';
 
 // ─── Save a result ────────────────────────────────────────────────────────────
@@ -58,12 +58,24 @@ export async function fetchHistory(
 
 // ─── Aggregate stats ──────────────────────────────────────────────────────────
 
-export async function fetchUserStats(userId: string) {
-  const { data, error } = await (supabase.from('typing_results') as any)
+// 🆕 Feature 1 — accepts an optional HistoryFilters so the profile's time-range
+// tabs (7d/15d/1m/3m/6m/all) can recompute avg/best WPM etc. for just that
+// window, instead of always looking at the most recent 500 rows regardless
+// of the selected range. dateFrom/dateTo apply the same way fetchHistory
+// already applies them, for consistency.
+export async function fetchUserStats(userId: string, filters?: HistoryFilters) {
+  let query = (supabase.from('typing_results') as any)
     .select('wpm, raw_wpm, accuracy, created_at, mode')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(500);
+
+  if (filters?.mode) query = query.eq('mode', filters.mode);
+  if (filters?.wordSet) query = query.eq('word_set', filters.wordSet);
+  if (filters?.dateFrom) query = query.gte('created_at', filters.dateFrom);
+  if (filters?.dateTo) query = query.lte('created_at', filters.dateTo);
+
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
   if (!data || (data as any[]).length === 0) return null;
@@ -111,4 +123,51 @@ export async function deleteAllResults(userId: string): Promise<void> {
     .delete()
     .eq('user_id', userId);
   if (error) throw new Error(error.message);
+}
+
+// ─── 🆕 Feature 2 — day streak ─────────────────────────────────────────────────
+// Backed by the get_user_streak() Postgres function (see migration SQL),
+// which does the consecutive-day math in SQL rather than pulling every
+// typing_results row down to the client to compute it in JS.
+
+export async function fetchStreak(userId: string): Promise<StreakStats> {
+  const { data, error } = await (supabase.rpc as any)('get_user_streak', { p_user_id: userId });
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    currentStreak: row?.current_streak ?? 0,
+    bestStreak: row?.best_streak ?? 0,
+  };
+}
+
+// ─── 🆕 Feature 7 — activity heatmap ───────────────────────────────────────────
+// Backed by get_daily_activity() — returns one row per day-with-activity
+// (days with zero tests are simply absent), which the heatmap component
+// fills in as empty cells.
+
+export async function fetchActivityHeatmap(userId: string, days = 365): Promise<ActivityDay[]> {
+  const { data, error } = await (supabase.rpc as any)('get_daily_activity', {
+    p_user_id: userId,
+    p_days: days,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<{ day: string; count: number }>).map(r => ({
+    day: r.day,
+    count: r.count,
+  }));
+}
+
+/** Fetch the individual tests for a single calendar day — used when a user clicks a heatmap square. */
+export async function fetchResultsForDay(userId: string, day: string): Promise<StoredResult[]> {
+  const start = `${day}T00:00:00.000Z`;
+  const end = `${day}T23:59:59.999Z`;
+  const { data, error } = await (supabase.from('typing_results') as any)
+    .select('*')
+    .eq('user_id', userId)
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StoredResult[];
 }

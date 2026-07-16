@@ -38,6 +38,97 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     const [removing, setRemoving] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
+    // 🆕 Feature 1 — time-range filter, drives both the stat cards and the
+    // recent-tests table below.
+    const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
+    const [recentResults, setRecentResults] = useState<StoredResult[]>([]);
+    const [avgWpm, setAvgWpm] = useState<number | null>(null);
+    const [totalTestsInRange, setTotalTestsInRange] = useState<number | null>(null);
+    const [statsLoading, setStatsLoading] = useState(true);
+
+    // 🆕 Feature 2 — streak
+    const [streak, setStreak] = useState<StreakStats | null>(null);
+
+    // 🆕 Feature 7 — activity heatmap
+    const [heatmapData, setHeatmapData] = useState<ActivityDay[]>([]);
+    const [heatmapLoading, setHeatmapLoading] = useState(true);
+
+    // 🆕 Feature 4 — multiplayer stats
+    const [mpSummary, setMpSummary] = useState<MultiplayerStatsSummary | null>(null);
+    const [mpRecent, setMpRecent] = useState<MultiplayerRecentResult[]>([]);
+    const [mpLoading, setMpLoading] = useState(true);
+
+    // ── Time-filtered stats + history (Feature 1) ──────────────────────────────
+    const loadFilteredData = useCallback(async (range: TimeRangeKey) => {
+        setStatsLoading(true);
+        const option = TIME_RANGE_OPTIONS.find(o => o.key === range)!;
+        const dateFrom = option.toDateFrom() ?? undefined;
+        const filters = dateFrom ? { dateFrom } : undefined;
+
+        try {
+            const [historyRes, statsRes] = await Promise.all([
+                fetchHistory(user.id, 1, 20, filters),
+                fetchUserStats(user.id, filters),
+            ]);
+            setRecentResults(historyRes.results);
+            setTotalTestsInRange(historyRes.total);
+            setAvgWpm(statsRes ? statsRes.avgWpm : 0);
+        } catch {
+            setRecentResults([]);
+            setAvgWpm(null);
+            setTotalTestsInRange(null);
+        } finally {
+            setStatsLoading(false);
+        }
+    }, [user.id]);
+
+    useEffect(() => {
+        loadFilteredData(timeRange);
+    }, [loadFilteredData, timeRange]);
+
+    // ── Streak (Feature 2) — not affected by the time-range filter, it's
+    // always "as of today". ─────────────────────────────────────────────────
+    useEffect(() => {
+        let cancelled = false;
+        fetchStreak(user.id)
+            .then(s => { if (!cancelled) setStreak(s); })
+            .catch(() => { if (!cancelled) setStreak(null); });
+        return () => { cancelled = true; };
+    }, [user.id]);
+
+    // ── Activity heatmap (Feature 7) ────────────────────────────────────────
+    useEffect(() => {
+        let cancelled = false;
+        setHeatmapLoading(true);
+        fetchActivityHeatmap(user.id, 365)
+            .then(d => { if (!cancelled) setHeatmapData(d); })
+            .catch(() => { if (!cancelled) setHeatmapData([]); })
+            .finally(() => { if (!cancelled) setHeatmapLoading(false); });
+        return () => { cancelled = true; };
+    }, [user.id]);
+
+    // ── Multiplayer stats (Feature 4) ───────────────────────────────────────
+    useEffect(() => {
+        let cancelled = false;
+        setMpLoading(true);
+        Promise.all([
+            fetchMultiplayerStats(user.id),
+            fetchRecentMultiplayerResults(user.id, 10),
+        ])
+            .then(([summary, recent]) => {
+                if (cancelled) return;
+                setMpSummary(summary);
+                setMpRecent(recent);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setMpSummary(null);
+                setMpRecent([]);
+            })
+            .finally(() => { if (!cancelled) setMpLoading(false); });
+        return () => { cancelled = true; };
+    }, [user.id]);
+
     const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -53,7 +144,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     };
 
     const statCards = [
-        { label: 'Total tests', value: user.totalTests.toLocaleString() },
+        {
+            label: 'Total tests',
+            value: timeRange === 'all'
+                ? user.totalTests.toLocaleString()
+                : (totalTestsInRange ?? 0).toLocaleString(),
+        },
         { label: 'Time typed', value: formatTime(user.totalTimeTyped) },
         { label: 'Avg WPM', value: avgWpm !== null ? Math.round(avgWpm).toString() : '—' },
         { label: 'Member since', value: new Date(user.createdAt).toLocaleDateString() },
@@ -131,12 +227,32 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
             </div>
 
-            {/* Stats grid */}
+            {/* 🆕 Feature 5 — Bio / about section */}
+            {user.bio && (
+                <div>
+                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-2">
+                        About me
+                    </h2>
+                    <p className="text-text-secondary text-sm bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 whitespace-pre-wrap break-words">
+                        {user.bio}
+                    </p>
+                </div>
+            )}
+
+            {/* Stats grid + time filter */}
             <div>
-                <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
-                    Stats
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider flex items-center gap-2">
+                        Stats
+                        {streak && (
+                            <span className="normal-case font-normal text-[11px] text-text-muted flex items-center gap-1">
+                                <Flame size={11} className="text-orange-400" /> best {streak.bestStreak}d
+                            </span>
+                        )}
+                    </h2>
+                    <TimeFilterTabs value={timeRange} onChange={setTimeRange} disabled={statsLoading} />
+                </div>
+                <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 transition-opacity ${statsLoading ? 'opacity-60' : ''}`}>
                     {statCards.map(card => (
                         <div key={card.label} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
                             <p className="text-xs text-text-muted mb-1">{card.label}</p>
@@ -146,13 +262,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
             </div>
 
-            {/* Recent tests */}
+            {/* Recent tests (time-filtered) */}
             <div>
                 <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
                     Recent tests
                 </h2>
                 {recentResults.length === 0 ? (
-                    <p className="text-text-muted text-sm">No tests saved yet.</p>
+                    <p className="text-text-muted text-sm">
+                        {statsLoading ? 'Loading…' : 'No tests in this range.'}
+                    </p>
                 ) : (
                     <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl overflow-hidden">
                         <table className="w-full text-sm">
