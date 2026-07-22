@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { fetchResultsForDay } from '../../services/results.service';
 import type { ActivityDay, StoredResult } from '../../types/auth';
@@ -26,7 +26,6 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [dayResults, setDayResults] = useState<StoredResult[]>([]);
   const [loadingDay, setLoadingDay] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const countByDay = useMemo(() => {
     const m = new Map<string, number>();
@@ -41,12 +40,20 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
 
   // Build a full grid, aligned so the first column starts on a Sunday and
   // the grid ends today, matching the classic contribution-calendar layout.
+  //
+  // 🐛 Fix: anchored entirely in UTC. Both get_daily_activity() (backend) and
+  // fetchResultsForDay() above treat a "day" as a UTC calendar date (see the
+  // 'T00:00:00.000Z' / 'T23:59:59.999Z' bounds in fetchResultsForDay). The
+  // previous version anchored "today" with setHours() (local time) then
+  // serialized cells with toISOString() (UTC) — for any timezone ahead of
+  // UTC, local midnight converts to the *previous* UTC calendar day, so
+  // today's cell was keyed one day early and never matched today's row.
   const weeks = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
     const start = new Date(today.getTime() - (days - 1) * DAY_MS);
-    // Rewind to the previous Sunday so week columns align cleanly.
-    const alignedStart = new Date(start.getTime() - start.getDay() * DAY_MS);
+    // Rewind to the previous Sunday (UTC) so week columns align cleanly.
+    const alignedStart = new Date(start.getTime() - start.getUTCDay() * DAY_MS);
 
     const cols: { date: Date; key: string; count: number }[][] = [];
     let cursor = new Date(alignedStart);
@@ -92,26 +99,21 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
     weeks.forEach((col, i) => {
       const firstOfCol = col[0]?.date;
       if (!firstOfCol) return;
-      const m = firstOfCol.getMonth();
+      const m = firstOfCol.getUTCMonth();
       if (m !== lastMonth) {
-        labels.push({ colIndex: i, label: firstOfCol.toLocaleDateString(undefined, { month: 'short' }) });
+        labels.push({
+          colIndex: i,
+          label: firstOfCol.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }),
+        });
         lastMonth = m;
       }
     });
     return labels;
   }, [weeks]);
 
-  // Default scroll position: rightmost column (most recent days), matching
-  // GitHub's contribution calendar behavior.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollLeft = el.scrollWidth;
-  }, [weeks]);
-
   return (
     <div className="relative">
-      <div ref={scrollRef} className="overflow-x-auto pb-1">
+      <div className="overflow-x-auto pb-1">
         <div className="inline-flex flex-col gap-1 min-w-full">
           {/* Month labels */}
           <div className="flex gap-[3px] pl-6 text-[10px] text-text-muted font-mono">
@@ -157,8 +159,8 @@ const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ userId, data, days = 
           <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-2xl p-5 w-full max-w-sm max-h-[70vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-mono font-semibold text-sm text-text-primary">
-                {new Date(selectedDay + 'T00:00:00').toLocaleDateString(undefined, {
-                  weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
+                {new Date(selectedDay + 'T00:00:00Z').toLocaleDateString(undefined, {
+                  weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
                 })}
               </h3>
               <button onClick={() => setSelectedDay(null)} className="text-text-muted hover:text-text-primary">
