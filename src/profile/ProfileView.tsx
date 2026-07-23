@@ -1,17 +1,24 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Trash2, CheckCircle, Flame } from 'lucide-react';
+import {
+    Camera,
+    Trash2,
+    CheckCircle,
+    Clock,
+    Keyboard,
+    BarChart3,
+    Calendar,
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import UserAvatar from '../components/auth/UserAvatar';
 import { Button } from '../components/ui/FormElements';
-import TimeFilterTabs from '../components/profile/TimeFilterTabs';
 import StatsModeToggle, { type StatsMode } from '../components/profile/StatsModeToggle';
 import ActivityHeatmap from '../components/profile/ActivityHeatmap';
 import ShareProfileButton from '../components/profile/ShareProfileButton';
 import MultiplayerStatsSection from '../components/profile/MultiplayerStatsSection';
 import { fetchHistory, fetchUserStats, fetchStreak, fetchActivityHeatmap } from '../services/results.service';
 import { fetchMultiplayerStats, fetchRecentMultiplayerResults } from '../services/multiplayerStats.service';
-import { TIME_RANGE_OPTIONS, type TimeRangeKey, type StreakStats, type ActivityDay } from '../types/auth';
+import type { StreakStats, ActivityDay } from '../types/auth';
 import type { UserProfile } from '../types/auth';
 import type { StoredResult } from '../types/auth';
 import type { MultiplayerStatsSummary, MultiplayerRecentResult } from '../types/multiplayerStats';
@@ -21,6 +28,15 @@ interface ProfileViewProps {
     isOwnProfile: boolean;
     friendsSince?: string | null;
 }
+
+// ── Local time‑range type (only 7d / 15d / 30d) ──
+type TimeRange = '7d' | '15d' | '30d';
+
+const TIME_RANGES: { key: TimeRange; label: string; days: number }[] = [
+    { key: '7d', label: '7 days', days: 7 },
+    { key: '15d', label: '15 days', days: 15 },
+    { key: '30d', label: '30 days', days: 30 },
+];
 
 const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -39,46 +55,46 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     const [removing, setRemoving] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    // 🆕 Feature 1 — time-range filter, drives both the stat cards and the
-    // recent-tests table below.
-    const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
+    // ── Time filter state ──────────────────────────────────────────────
+    const [timeRange, setTimeRange] = useState<TimeRange>('7d');
     const [recentResults, setRecentResults] = useState<StoredResult[]>([]);
     const [avgWpm, setAvgWpm] = useState<number | null>(null);
     const [totalTestsInRange, setTotalTestsInRange] = useState<number | null>(null);
+    const [timeTypedInRange, setTimeTypedInRange] = useState<number | null>(null); // <-- added
     const [statsLoading, setStatsLoading] = useState(true);
 
-    // 🆕 Feature 2 — streak
+    // ── Streak ──────────────────────────────────────────────────────────
     const [streak, setStreak] = useState<StreakStats | null>(null);
 
-    // 🆕 Feature 7 — activity heatmap
+    // ── Activity heatmap ───────────────────────────────────────────────
     const [heatmapData, setHeatmapData] = useState<ActivityDay[]>([]);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
 
-    // 🆕 Feature 4 — multiplayer stats
+    // ── Multiplayer stats ──────────────────────────────────────────────
     const [mpSummary, setMpSummary] = useState<MultiplayerStatsSummary | null>(null);
     const [mpRecent, setMpRecent] = useState<MultiplayerRecentResult[]>([]);
     const [mpLoading, setMpLoading] = useState(true);
 
-    // 🆕 Feature 8 — single-player / multiplayer stats switch. Both data sets
-    // are already fetched (see effects below) so flipping this is instant —
-    // it only decides which one occupies the Stats slot.
+    // ── Stats mode toggle (single / multiplayer) ─────────────────────
     const [statsMode, setStatsMode] = useState<StatsMode>('single');
 
-    // Safeguard: if multiplayer data finishes loading and there's none (e.g.
-    // this user has never raced, or the toggle carried over while navigating
-    // between profiles), fall back to single-player rather than showing an
-    // empty Stats block.
+    // ── Fallback to single if no multiplayer data ─────────────────────
     useEffect(() => {
         if (!mpLoading && !mpSummary && statsMode === 'multiplayer') {
             setStatsMode('single');
         }
     }, [mpLoading, mpSummary, statsMode]);
 
-    // ── Time-filtered stats + history (Feature 1) ──────────────────────────────
-    const loadFilteredData = useCallback(async (range: TimeRangeKey) => {
+    // ── Load time‑filtered data (single‑player stats + recent tests) ──
+    const loadFilteredData = useCallback(async (range: TimeRange) => {
         setStatsLoading(true);
-        const option = TIME_RANGE_OPTIONS.find(o => o.key === range)!;
-        const dateFrom = option.toDateFrom() ?? undefined;
+        const selected = TIME_RANGES.find(r => r.key === range);
+        let dateFrom: string | undefined;
+        if (selected) {
+            const d = new Date();
+            d.setDate(d.getDate() - selected.days);
+            dateFrom = d.toISOString();
+        }
         const filters = dateFrom ? { dateFrom } : undefined;
 
         try {
@@ -89,10 +105,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             setRecentResults(historyRes.results);
             setTotalTestsInRange(historyRes.total);
             setAvgWpm(statsRes ? statsRes.avgWpm : 0);
+            setTimeTypedInRange(statsRes ? statsRes.totalTimeTyped : 0); // <-- read filtered time
         } catch {
             setRecentResults([]);
             setAvgWpm(null);
             setTotalTestsInRange(null);
+            setTimeTypedInRange(null);
         } finally {
             setStatsLoading(false);
         }
@@ -102,8 +120,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         loadFilteredData(timeRange);
     }, [loadFilteredData, timeRange]);
 
-    // ── Streak (Feature 2) — not affected by the time-range filter, it's
-    // always "as of today". ─────────────────────────────────────────────────
+    // ── Fetch streak ──────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
         fetchStreak(user.id)
@@ -112,7 +129,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         return () => { cancelled = true; };
     }, [user.id]);
 
-    // ── Activity heatmap (Feature 7) ────────────────────────────────────────
+    // ── Fetch heatmap ──────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
         setHeatmapLoading(true);
@@ -123,9 +140,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         return () => { cancelled = true; };
     }, [user.id]);
 
-    // ── Multiplayer stats (Feature 4) ───────────────────────────────────────
-    // Fetched unconditionally (not lazily on toggle) so switching statsMode
-    // is instant and doesn't show a loading flash every time.
+    // ── Fetch multiplayer stats ───────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
         setMpLoading(true);
@@ -147,6 +162,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         return () => { cancelled = true; };
     }, [user.id]);
 
+    // ── Avatar handlers ───────────────────────────────────────────────
     const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -161,22 +177,34 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         finally { setRemoving(false); }
     };
 
+    // ── Stat cards data (now timeTypedInRange is filtered) ──────────
     const statCards = [
         {
-            label: 'Total tests',
-            value: timeRange === 'all'
-                ? user.totalTests.toLocaleString()
-                : (totalTestsInRange ?? 0).toLocaleString(),
+            label: 'Tests',
+            value: (totalTestsInRange ?? 0).toLocaleString(),
+            icon: Keyboard,
         },
-        { label: 'Time typed', value: formatTime(user.totalTimeTyped) },
-        { label: 'Avg WPM', value: avgWpm !== null ? Math.round(avgWpm).toString() : '—' },
-        { label: 'Member since', value: new Date(user.createdAt).toLocaleDateString() },
+        {
+            label: 'Time typed',
+            value: timeTypedInRange !== null ? formatTime(timeTypedInRange) : '—',
+            icon: Clock,
+        },
+        {
+            label: 'Avg WPM',
+            value: avgWpm !== null ? Math.round(avgWpm).toString() : '—',
+            icon: BarChart3,
+        },
+        {
+            label: 'Member since',
+            value: new Date(user.createdAt).toLocaleDateString(),
+            icon: Calendar,
+        },
     ];
 
     return (
-        <div className="flex flex-col gap-8">
-            {/* Profile card */}
-            <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-2xl p-6 flex items-center gap-6 flex-wrap">
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
+            {/* ── Profile card ── */}
+            <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-2xl p-6 flex items-center gap-6 flex-wrap shadow-sm">
                 {/* Avatar */}
                 <div className="relative shrink-0">
                     <UserAvatar user={user} size={80} />
@@ -217,7 +245,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
                 {/* User info */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <h1 className="font-mono font-bold text-xl text-text-primary truncate">
                             {user.displayName}
                         </h1>
@@ -226,7 +254,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 <CheckCircle size={16} className="text-green-400 shrink-0" />
                             </span>
                         )}
-                        {/* 🆕 Feature 2 — streak, next to the name so it reads as a badge */}
+                        {/* Streak badge */}
                         {streak && streak.currentStreak > 0 && (
                             <span
                                 title={`Best streak: ${streak.bestStreak} days`}
@@ -237,10 +265,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         )}
                     </div>
                     <p className="text-text-muted text-sm">@{user.username}</p>
-                    {isOwnProfile && <p className="text-text-muted text-xs mt-0.5 truncate">{user.email}</p>}
+                    {isOwnProfile && (
+                        <p className="text-text-muted text-xs mt-0.5 truncate">{user.email}</p>
+                    )}
                 </div>
 
-                {/* Right side: Friends since (if not own profile) + Edit profile / Share button */}
+                {/* Right actions */}
                 <div className="flex items-center gap-3 ml-auto shrink-0">
                     {!isOwnProfile && friendsSince && (
                         <div className="text-right text-text-muted">
@@ -257,21 +287,86 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
             </div>
 
-            {/* 🆕 Feature 5 — Bio / about section */}
+            {/* ── Bio ── */}
             {user.bio && (
                 <div>
                     <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-2">
                         About me
                     </h2>
-                    <p className="text-text-secondary text-sm bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 whitespace-pre-wrap break-words">
-                        {user.bio}
-                    </p>
+                    <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
+                        <p className="text-text-secondary text-sm whitespace-pre-wrap break-words">
+                            {user.bio}
+                        </p>
+                    </div>
                 </div>
             )}
 
-            {/* 🆕 Feature 7 — activity heatmap (moved up: right after the identity
-                section, before performance stats, so it reads as part of "who this
-                person is" rather than being buried at the bottom of the page) */}
+            {/* ── Stats ── */}
+            <div>
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
+                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider">
+                        Stats
+                    </h2>
+                    <div className="flex items-center gap-2">
+                        {statsMode === 'single' && (
+                            <>
+                                <div className="flex items-center gap-1 bg-bg-secondary border border-bg-tertiary/60 rounded-lg p-0.5">
+                                    {TIME_RANGES.map(({ key, label }) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setTimeRange(key)}
+                                            disabled={statsLoading}
+                                            className={`
+                        px-3 py-1 text-xs font-mono rounded-md transition-all cursor-pointer
+                        ${timeRange === key
+                                                    ? 'bg-accent-primary/20 text-accent-primary font-semibold'
+                                                    : 'text-text-muted hover:text-text-primary'
+                                                }
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                      `}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="w-px h-6 bg-bg-tertiary/40" />
+                            </>
+                        )}
+                        <div className="cursor-pointer">
+                            <StatsModeToggle
+                                value={statsMode}
+                                onChange={setStatsMode}
+                                multiplayerDisabledReason={!mpLoading && !mpSummary ? 'No multiplayer races yet' : null}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {statsMode === 'single' ? (
+                    <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 transition-opacity ${statsLoading ? 'opacity-60' : ''}`}>
+                        {statCards.map(({ label, value, icon: Icon }) => (
+                            <div
+                                key={label}
+                                className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 flex items-start gap-3"
+                            >
+                                <Icon size={18} className="text-text-muted shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-xs text-text-muted">{label}</p>
+                                    <p className="font-mono font-bold text-text-primary text-lg leading-tight">
+                                        {value}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="mt-4">
+                        <MultiplayerStatsSection summary={mpSummary} recent={mpRecent} loading={mpLoading} hideHeading />
+                    </div>
+                )}
+            </div>
+
+            {/* ── Activity heatmap ── */}
             <div>
                 <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
                     Activity
@@ -285,56 +380,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
             </div>
 
-            {/* 🆕 Feature 8 — Stats block with single-player / multiplayer switch.
-                Both modes render into this same slot so switching never causes a
-                page jump. The time-range filter only applies to single-player
-                data, so it's hidden in multiplayer mode. */}
-            <div>
-                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-                    <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider flex items-center gap-2">
-                        Stats
-                        {streak && statsMode === 'single' && (
-                            <span className="normal-case font-normal text-[11px] text-text-muted flex items-center gap-1">
-                                <Flame size={11} className="text-orange-400" /> best {streak.bestStreak}d
-                            </span>
-                        )}
-                    </h2>
-                    <div className="flex items-center gap-3">
-                        {statsMode === 'single' && (
-                            <TimeFilterTabs value={timeRange} onChange={setTimeRange} disabled={statsLoading} />
-                        )}
-                        <StatsModeToggle
-                            value={statsMode}
-                            onChange={setStatsMode}
-                            multiplayerDisabledReason={!mpLoading && !mpSummary ? 'No multiplayer races yet' : null}
-                        />
-                    </div>
-                </div>
-
-                {statsMode === 'single' ? (
-                    <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 transition-opacity ${statsLoading ? 'opacity-60' : ''}`}>
-                        {statCards.map(card => (
-                            <div key={card.label} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
-                                <p className="text-xs text-text-muted mb-1">{card.label}</p>
-                                <p className="font-mono font-bold text-text-primary text-lg">{card.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <MultiplayerStatsSection summary={mpSummary} recent={mpRecent} loading={mpLoading} hideHeading />
-                )}
-            </div>
-
-            {/* Recent tests (time-filtered, single-player only — multiplayer's
-                recent-results table is rendered inside MultiplayerStatsSection
-                above when that mode is active) */}
+            {/* ── Recent tests (single‑player only) ── */}
             {statsMode === 'single' && (
                 <div>
                     <h2 className="font-mono font-semibold text-sm text-text-muted uppercase tracking-wider mb-3">
                         Recent tests
                     </h2>
                     {recentResults.length === 0 ? (
-                        <p className="text-text-muted text-sm">
+                        <p className="text-text-muted text-sm bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
                             {statsLoading ? 'Loading…' : 'No tests in this range.'}
                         </p>
                     ) : (

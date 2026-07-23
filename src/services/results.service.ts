@@ -65,7 +65,7 @@ export async function fetchHistory(
 // already applies them, for consistency.
 export async function fetchUserStats(userId: string, filters?: HistoryFilters) {
   let query = (supabase.from('typing_results') as any)
-    .select('wpm, raw_wpm, accuracy, created_at, mode')
+    .select('wpm, raw_wpm, accuracy, created_at, mode, duration') // ✅ added duration
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(500);
@@ -80,9 +80,20 @@ export async function fetchUserStats(userId: string, filters?: HistoryFilters) {
   if (error) throw new Error(error.message);
   if (!data || (data as any[]).length === 0) return null;
 
-  const rows = data as Array<{ wpm: number; raw_wpm: number; accuracy: number; created_at: string; mode: string }>;
+  const rows = data as Array<{
+    wpm: number;
+    raw_wpm: number;
+    accuracy: number;
+    created_at: string;
+    mode: string;
+    duration: number; // now typed
+  }>;
+
   const wpms = rows.map(r => Number(r.wpm));
   const accs = rows.map(r => Number(r.accuracy));
+
+  // Sum of durations in seconds (fallback to 0 if null/undefined)
+  const totalTimeTyped = rows.reduce((sum, r) => sum + (r.duration || 0), 0);
 
   return {
     totalTests: rows.length,
@@ -90,6 +101,7 @@ export async function fetchUserStats(userId: string, filters?: HistoryFilters) {
     bestWpm: Math.max(...wpms),
     avgAccuracy: avg(accs),
     recentTests: rows.slice(0, 10),
+    totalTimeTyped, // ✅ new field
   };
 }
 

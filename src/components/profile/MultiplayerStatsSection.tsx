@@ -1,21 +1,11 @@
 import React from 'react';
-import { Swords, Trophy } from 'lucide-react';
+import { Swords, Trophy, Gauge, Rocket } from 'lucide-react';
 import type { MultiplayerStatsSummary, MultiplayerRecentResult } from '../../types/multiplayerStats';
-
-// 🆕 Feature 4 — multiplayer stats section. Purely presentational; ProfileView
-// owns the fetching (via services/multiplayerStats.service.ts) and passes
-// the results down. Renders nothing if the user has no multiplayer races,
-// per the acceptance criteria ("only show for authenticated users who have
-// played multiplayer").
 
 interface MultiplayerStatsSectionProps {
   summary: MultiplayerStatsSummary | null;
   recent: MultiplayerRecentResult[];
   loading: boolean;
-  // 🆕 Feature 8 — when this section is rendered inside ProfileView's
-  // single/multiplayer toggle, the shared "Stats" heading above it already
-  // establishes context, so the component's own "Multiplayer" heading is
-  // redundant. Standalone usage (if any) keeps the heading by default.
   hideHeading?: boolean;
 }
 
@@ -32,7 +22,12 @@ const resultLabel = (r: MultiplayerRecentResult) => {
   return 'Draw';
 };
 
-const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summary, recent, loading, hideHeading }) => {
+const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({
+  summary,
+  recent,
+  loading,
+  hideHeading,
+}) => {
   if (loading) {
     return (
       <div>
@@ -50,13 +45,13 @@ const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summa
     );
   }
 
-  if (!summary) return null; // no multiplayer races yet — section hidden entirely
+  if (!summary) return null;
 
   const cards = [
-    { label: 'Races', value: summary.totalRaces.toLocaleString() },
-    { label: 'W / L / D', value: `${summary.wins} / ${summary.losses} / ${summary.draws}` },
-    { label: 'Avg race WPM', value: Math.round(summary.avgWpm).toString() },
-    { label: 'Best race WPM', value: Math.round(summary.bestWpm).toString() },
+    { label: 'Races', value: summary.totalRaces.toLocaleString(), icon: Swords },
+    { label: 'Win-Loss-Draw', value: `${summary.wins}-${summary.losses}-${summary.draws}`, icon: Trophy },
+    { label: 'Avg race WPM', value: Math.round(summary.avgWpm).toString(), icon: Gauge },
+    { label: 'Best race WPM', value: Math.round(summary.bestWpm).toString(), icon: Rocket },
   ];
 
   return (
@@ -67,17 +62,26 @@ const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summa
         </h2>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        {cards.map(c => (
-          <div key={c.label} className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4">
-            <p className="text-xs text-text-muted mb-1">{c.label}</p>
-            <p className="font-mono font-bold text-text-primary text-lg">{c.value}</p>
+      {/* 🆕 identical card structure as single‑player */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {cards.map(({ label, value, icon: Icon }) => (
+          <div
+            key={label}
+            className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl p-4 flex items-start gap-3"
+          >
+            <Icon size={18} className="text-text-muted shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-text-muted">{label}</p>
+              <p className="font-mono font-bold text-text-primary text-lg leading-tight">
+                {value}
+              </p>
+            </div>
           </div>
         ))}
       </div>
 
       {recent.length > 0 && (
-        <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl overflow-hidden">
+        <div className="bg-bg-secondary border border-bg-tertiary/60 rounded-xl overflow-hidden mt-4">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-bg-tertiary/40 text-text-muted text-xs uppercase tracking-wider">
@@ -98,7 +102,7 @@ const MultiplayerStatsSection: React.FC<MultiplayerStatsSectionProps> = ({ summa
                     {r.opponents.length === 0
                       ? '—'
                       : r.opponents.slice(0, 3).map(o => o.username).join(', ') +
-                        (r.opponents.length > 3 ? ` +${r.opponents.length - 3}` : '')}
+                      (r.opponents.length > 3 ? ` +${r.opponents.length - 3}` : '')}
                   </td>
                   <td className="px-4 py-2.5 text-right text-accent-primary font-mono font-bold">
                     {r.dnf ? '—' : r.wpm}
